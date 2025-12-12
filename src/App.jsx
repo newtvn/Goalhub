@@ -117,6 +117,10 @@ export default function GoalHubApp() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
+  // Turfs State - Fetch from API
+  const [turfs, setTurfs] = useState([]);
+  const [isLoadingTurfs, setIsLoadingTurfs] = useState(true);
+
   // Events State
   const [eventsList, setEventsList] = useState(INITIAL_EVENTS);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -155,13 +159,9 @@ export default function GoalHubApp() {
   ]);
   const [editingUser, setEditingUser] = useState(null);
 
-  // Bookings Data
-  const [bookings, setBookings] = useState([
-    { id: 'BK-8821', turf: 'Allianz Arena', date: '2025-11-21', time: '18:00', duration: 1, customer: 'John Doe', status: 'Confirmed', amount: 2700, payment: 'M-Pesa' },
-    { id: 'BK-8822', turf: 'Camp Nou', date: '2025-11-21', time: '19:00', duration: 2, customer: 'Jane Smith', status: 'Pending', amount: 7000, payment: 'Unpaid' },
-    { id: 'BK-9001', turf: 'Allianz Arena', date: '2025-10-15', time: '18:00', duration: 1, customer: 'Alex K.', status: 'Completed', amount: 2500, payment: 'M-Pesa' },
-    { id: 'BK-9002', turf: 'Camp Nou', date: '2025-12-01', time: '20:00', duration: 2, customer: 'Alex K.', status: 'Confirmed', amount: 7000, payment: 'M-Pesa' },
-  ]);
+  // Bookings Data - Fetch from API for admin/manager
+  const [bookings, setBookings] = useState([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [editingBooking, setEditingBooking] = useState(null);
 
   // Reports
@@ -251,6 +251,56 @@ export default function GoalHubApp() {
       return () => clearTimeout(timer);
     }
   }, [userRole, pendingAdminNotifications]);
+
+  // Fetch turfs from backend on mount
+  useEffect(() => {
+    const fetchTurfs = async () => {
+      try {
+        setIsLoadingTurfs(true);
+        const response = await fetch('http://localhost:8000/api/turfs/');
+        if (response.ok) {
+          const data = await response.json();
+          setTurfs(data);
+        } else {
+          console.error('Failed to fetch turfs:', response.status);
+          showNotification('❌ Failed to load turfs from server');
+        }
+      } catch (error) {
+        console.error('Error fetching turfs:', error);
+        showNotification('❌ Cannot connect to backend server');
+      } finally {
+        setIsLoadingTurfs(false);
+      }
+    };
+
+    fetchTurfs();
+  }, []);
+
+  // Fetch bookings from backend for admin/manager
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (userRole !== 'admin' && userRole !== 'manager') {
+        return; // Only fetch for admin/manager
+      }
+
+      try {
+        setIsLoadingBookings(true);
+        const response = await fetch('http://localhost:8000/api/bookings/');
+        if (response.ok) {
+          const data = await response.json();
+          setBookings(data);
+        } else {
+          console.error('Failed to fetch bookings:', response.status);
+        }
+      } catch (error) {
+        console.error('Error fetching bookings:', error);
+      } finally {
+        setIsLoadingBookings(false);
+      }
+    };
+
+    fetchBookings();
+  }, [userRole]);
 
   // --- AUTHENTICATION ---
   const handleLoginSubmit = () => {
@@ -664,50 +714,61 @@ export default function GoalHubApp() {
                   <button className="text-emerald-500 text-sm font-medium flex items-center">View map <ChevronRight className="h-4 w-4 ml-1" /></button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                  {TURFS.map(turf => (
-                    <div key={turf.id} onClick={() => addToCart(turf)} className={`${theme.card} ${theme.cardHover} group overflow-hidden relative flex flex-col`}>
-                      {/* Image Container */}
-                      <div className="h-56 relative w-full">
-                        <div className={`absolute inset-0 bg-gradient-to-b from-transparent z-10 ${isDarkMode ? 'to-black/20' : 'to-transparent'}`}></div>
-                        <img src={turf.image} alt={turf.name} className="w-full h-full object-cover transition duration-700 group-hover:scale-110" />
-                        <div className={`absolute top-6 right-6 z-20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-white/20 border-white/10 text-white' : 'bg-white/90 border-white text-slate-900'}`}>{turf.type}</div>
-                        {globalDiscount > 0 && (
-                          <div className="absolute top-6 left-6 z-20 bg-red-600 shadow-lg shadow-red-600/20 px-4 py-2 rounded-full text-xs font-bold text-white border border-red-400/20 flex items-center">
-                            <Tag className="h-3 w-3 mr-1" /> {globalDiscount}% OFF
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Content Container */}
-                      <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
-                        <div>
-                          <div className="flex justify-between items-start mb-2">
-                            <h3 className={`text-2xl md:text-3xl font-bold ${theme.text}`}>{turf.name}</h3>
-                          </div>
-                          <div className={`flex items-center text-sm mb-6 ${theme.textSub}`}><MapPin className="h-4 w-4 mr-1 text-emerald-500" /> {turf.location}</div>
+                  {isLoadingTurfs ? (
+                    <div className="col-span-2 text-center py-12">
+                      <Loader2 className="h-12 w-12 animate-spin mx-auto text-emerald-500 mb-4" />
+                      <p className={theme.textSub}>Loading turfs...</p>
+                    </div>
+                  ) : turfs.length === 0 ? (
+                    <div className="col-span-2 text-center py-12">
+                      <p className={theme.textSub}>No turfs available at the moment.</p>
+                    </div>
+                  ) : (
+                    turfs.map(turf => (
+                      <div key={turf.id} onClick={() => addToCart(turf)} className={`${theme.card} ${theme.cardHover} group overflow-hidden relative flex flex-col`}>
+                        {/* Image Container */}
+                        <div className="h-56 relative w-full">
+                          <div className={`absolute inset-0 bg-gradient-to-b from-transparent z-10 ${isDarkMode ? 'to-black/20' : 'to-transparent'}`}></div>
+                          <img src={turf.image} alt={turf.name} className="w-full h-full object-cover transition duration-700 group-hover:scale-110" />
+                          <div className={`absolute top-6 right-6 z-20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-white/20 border-white/10 text-white' : 'bg-white/90 border-white text-slate-900'}`}>{turf.type}</div>
+                          {globalDiscount > 0 && (
+                            <div className="absolute top-6 left-6 z-20 bg-red-600 shadow-lg shadow-red-600/20 px-4 py-2 rounded-full text-xs font-bold text-white border border-red-400/20 flex items-center">
+                              <Tag className="h-3 w-3 mr-1" /> {globalDiscount}% OFF
+                            </div>
+                          )}
                         </div>
 
-                        {/* Price & Action Footer */}
-                        <div className={`flex justify-between items-center border-t pt-6 ${theme.divider}`}>
+                        {/* Content Container */}
+                        <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
                           <div>
-                            <span className={`text-xs uppercase font-bold tracking-wider ${theme.textSub}`}>Rate</span>
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                              {globalDiscount > 0 && (
-                                <span className="text-sm text-gray-400 line-through decoration-red-500 decoration-2 opacity-70">KES {turf.price.toLocaleString()}</span>
-                              )}
-                              <div className={`text-xl md:text-2xl font-bold ${theme.text}`}>
-                                KES {getDiscountedPrice(turf.price).toLocaleString()}
-                                <span className={`text-sm font-normal ${theme.textSub}`}>/ hr</span>
+                            <div className="flex justify-between items-start mb-2">
+                              <h3 className={`text-2xl md:text-3xl font-bold ${theme.text}`}>{turf.name}</h3>
+                            </div>
+                            <div className={`flex items-center text-sm mb-6 ${theme.textSub}`}><MapPin className="h-4 w-4 mr-1 text-emerald-500" /> {turf.location}</div>
+                          </div>
+
+                          {/* Price & Action Footer */}
+                          <div className={`flex justify-between items-center border-t pt-6 ${theme.divider}`}>
+                            <div>
+                              <span className={`text-xs uppercase font-bold tracking-wider ${theme.textSub}`}>Rate</span>
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                {globalDiscount > 0 && (
+                                  <span className="text-sm text-gray-400 line-through decoration-red-500 decoration-2 opacity-70">KES {turf.price.toLocaleString()}</span>
+                                )}
+                                <div className={`text-xl md:text-2xl font-bold ${theme.text}`}>
+                                  KES {getDiscountedPrice(turf.price).toLocaleString()}
+                                  <span className={`text-sm font-normal ${theme.textSub}`}>/ hr</span>
+                                </div>
                               </div>
                             </div>
+                            <button onClick={() => addToCart(turf)} className={`${theme.btnPrimary} flex items-center pl-5 pr-4 py-2 text-sm`}>
+                              Book Now <ArrowRight className="h-4 w-4 ml-2" />
+                            </button>
                           </div>
-                          <button onClick={() => addToCart(turf)} className={`${theme.btnPrimary} flex items-center pl-5 pr-4 py-2 text-sm`}>
-                            Book Now <ArrowRight className="h-4 w-4 ml-2" />
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -1288,8 +1349,8 @@ export default function GoalHubApp() {
                             <div
                               key={notif.id}
                               className={`p-4 rounded-2xl border transition cursor-pointer ${notif.read
-                                  ? (isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100 opacity-70')
-                                  : (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200')
+                                ? (isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100 opacity-70')
+                                : (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200')
                                 }`}
                               onClick={() => setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n))}
                             >
@@ -1409,8 +1470,8 @@ export default function GoalHubApp() {
                 <button
                   onClick={handleGoogleSignIn}
                   className={`w-full mb-6 px-6 py-3 rounded-2xl font-semibold flex items-center justify-center gap-3 transition-all ${isDarkMode
-                      ? 'bg-white text-gray-900 hover:bg-gray-100'
-                      : 'bg-white text-gray-900 hover:bg-gray-50 border-2 border-slate-200'
+                    ? 'bg-white text-gray-900 hover:bg-gray-100'
+                    : 'bg-white text-gray-900 hover:bg-gray-50 border-2 border-slate-200'
                     } shadow-lg hover:shadow-xl`}
                 >
                   <svg className="h-5 w-5" viewBox="0 0 24 24">
