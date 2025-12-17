@@ -77,16 +77,11 @@ const TURFS = [
 ];
 
 const EXTRAS = [
-  { id: 'bibs', name: 'Team Bibs', sub: 'Set of 10', price: 200, icon: <Users className="h-5 w-5" /> },
   { id: 'ball', name: 'Pro Match Ball', sub: 'Size 5', price: 150, icon: <CheckCircle className="h-5 w-5" /> },
   { id: 'water', name: 'Water Case', sub: '24 Bottles', price: 800, icon: <CheckCircle className="h-5 w-5" /> }
 ];
 
-// Initial Events Data
-const INITIAL_EVENTS = [
-  { id: 1, title: "Kitengela Super Cup", date: "2025-12-15", time: "14:00", image: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&q=80&w=400" },
-  { id: 2, title: "Corporate League", date: "2025-11-28", time: "18:00", image: "https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?auto=format&fit=crop&q=80&w=400" }
-];
+
 
 const TIME_SLOTS = [
   "08:00", "09:00", "10:00", "11:00", "12:00", "13:00",
@@ -122,7 +117,8 @@ export default function GoalHubApp() {
   const [isLoadingTurfs, setIsLoadingTurfs] = useState(true);
 
   // Events State
-  const [eventsList, setEventsList] = useState(INITIAL_EVENTS);
+  const [eventsList, setEventsList] = useState([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
   const [editingEvent, setEditingEvent] = useState(null);
 
   // Booking State
@@ -145,18 +141,12 @@ export default function GoalHubApp() {
 
   // Notifications
   const [notification, setNotification] = useState(null);
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'booking', message: 'New booking confirmed for Allianz Arena', timestamp: '2025-11-21T10:30:00', read: false },
-    { id: 2, type: 'payment', message: 'Payment received: KES 2,500', timestamp: '2025-11-21T09:15:00', read: false },
-    { id: 3, type: 'system', message: 'System maintenance scheduled for tonight', timestamp: '2025-11-21T08:00:00', read: true },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
 
   // Users Data
-  const [users, setUsers] = useState([
-    { id: 1, name: 'Admin User', email: 'admin@goalhub.ke', role: 'admin', status: 'Active' },
-    { id: 2, name: 'John Manager', email: 'john@goalhub.ke', role: 'manager', status: 'Active' },
-    { id: 3, name: 'Sarah Staff', email: 'sarah@goalhub.ke', role: 'manager', status: 'Inactive' },
-  ]);
+  const [users, setUsers] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
   // Bookings Data - Fetch from API for admin/manager
@@ -300,6 +290,70 @@ export default function GoalHubApp() {
     };
 
     fetchBookings();
+  }, [userRole]);
+
+  // Fetch Events from API
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        setIsLoadingEvents(true);
+        const response = await fetch('http://localhost:8000/api/events/');
+        if (response.ok) {
+          const data = await response.json();
+          setEventsList(data);
+        } else {
+          console.error('Failed to fetch events:', response.status);
+          // Fallback to empty if failed, or handle error
+        }
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      } finally {
+        setIsLoadingEvents(false);
+      }
+    };
+    fetchEvents();
+  }, []);
+
+  // Fetch Users (Admin only)
+  useEffect(() => {
+    if (userRole === 'admin') {
+      const fetchUsers = async () => {
+        try {
+          setIsLoadingUsers(true);
+          const response = await fetch('http://localhost:8000/api/users/');
+          if (response.ok) {
+            const data = await response.json();
+            setUsers(data);
+          }
+        } catch (error) {
+          console.error('Error fetching users:', error);
+        } finally {
+          setIsLoadingUsers(false);
+        }
+      };
+      fetchUsers();
+    }
+  }, [userRole]);
+
+  // Fetch Notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (userRole === 'guest') return;
+
+      try {
+        setIsLoadingNotifications(true);
+        const response = await fetch('http://localhost:8000/api/notifications/');
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data);
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      } finally {
+        setIsLoadingNotifications(false);
+      }
+    };
+    fetchNotifications();
   }, [userRole]);
 
   // --- AUTHENTICATION ---

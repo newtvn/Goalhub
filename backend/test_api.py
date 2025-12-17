@@ -48,8 +48,32 @@ async def test_new_apis():
         except Exception as e:
             print(f"   ❌ Error: {e}")
             
-        # Test 4: API Documentation
-        print("\n4️⃣  Checking updated API docs...")
+        # Test 4: Notifications API
+        print("\n4️⃣  Testing GET /api/notifications/ endpoint...")
+        try:
+            r = await client.get('http://localhost:8000/api/notifications/')
+            print(f"   Status: {r.status_code}")
+            notifs = r.json()
+            print(f"   Found {len(notifs)} notifications")
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+
+        # Test 5: Create Notification
+        print("\n5️⃣  Testing POST /api/notifications/...")
+        try:
+            notif_data = {
+                "type": "system",
+                "message": "Test notification from automated test"
+            }
+            r = await client.post('http://localhost:8000/api/notifications/', json=notif_data)
+            print(f"   Status: {r.status_code}")
+            if r.status_code == 201:
+                print(f"   ✅ Created notification")
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+
+        # Test 6: API Documentation
+        print("\n6️⃣  Checking updated API docs...")
         try:
             r = await client.get('http://localhost:8000/docs')
             print(f"   Status: {r.status_code}")
