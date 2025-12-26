@@ -23,6 +23,8 @@ import { DARK_THEME, LIGHT_THEME } from './theme';
 import { TURFS, EXTRAS, INITIAL_EVENTS, TIME_SLOTS } from './data/mockData';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import NotificationsPanel from './components/NotificationsPanel';
+import { getGoogleCalendarUrl } from './utils/calendarUtils';
 
 // --- THEME DEFINITIONS ---
 
@@ -199,28 +201,56 @@ export default function GoalHubApp() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        if (user.email === 'newtvnbrian@gmail.com') {
-          setUserRole('admin');
-        } else {
-          // Check Firestore for staff role
-          const checkUserRole = async () => {
-            const q = query(collection(db, 'users'), where('email', '==', user.email.toLowerCase()), where('status', '==', 'Active'));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-              const staffData = querySnapshot.docs[0].data();
-              setUserRole(staffData.role);
-            } else {
-              setUserRole('user');
+        // Check/Create User in Firestore
+        const checkUserAndCreate = async () => {
+          const email = user.email.toLowerCase();
+          const q = query(collection(db, 'users'), where('email', '==', email));
+          const querySnapshot = await getDocs(q);
+
+          let docId = null;
+          let role = 'user';
+          let phone = user.phoneNumber || '0700000000';
+          let name = user.displayName || 'User';
+          let avatar = user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100';
+
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            docId = querySnapshot.docs[0].id;
+            role = userData.role || 'user';
+            if (userData.phone) phone = userData.phone;
+            if (userData.name) name = userData.name;
+            // Keep original logic for hardcoded admin
+            if (email === 'newtvnbrian@gmail.com') role = 'admin';
+          } else {
+            // Create new user doc
+            const newUserData = {
+              name,
+              email,
+              phone,
+              role: email === 'newtvnbrian@gmail.com' ? 'admin' : 'user',
+              status: 'Active',
+              avatar,
+              createdAt: new Date().toISOString()
+            };
+            try {
+              const docRef = await addDoc(collection(db, 'users'), newUserData);
+              docId = docRef.id;
+              role = newUserData.role;
+            } catch (e) {
+              console.error("Error creating user profile in DB:", e);
             }
-          };
-          checkUserRole();
-        }
-        setUserProfile({
-          name: user.displayName || 'User',
-          email: user.email,
-          phone: user.phoneNumber || '0700000000',
-          avatar: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100'
-        });
+          }
+
+          setUserRole(role);
+          setUserProfile({
+            id: docId,
+            name,
+            email,
+            phone,
+            avatar
+          });
+        };
+        checkUserAndCreate();
 
         if (currentView === 'login' || currentView === 'processing_login') {
           navigateTo('dashboard');
@@ -464,15 +494,27 @@ export default function GoalHubApp() {
   };
 
   // --- OTHER HANDLERS ---
-  const handleUpdateProfile = (e) => {
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    setIsEditingProfile(false);
-    showNotification("Profile updated successfully");
+    try {
+      if (userProfile.id) {
+        await updateDoc(doc(db, 'users', userProfile.id), {
+          name: userProfile.name,
+          phone: userProfile.phone,
+          email: userProfile.email
+        });
+        showNotification("Profile and database updated successfully");
+      } else {
+        showNotification("Profile updated (Session Only)");
+      }
+      setIsEditingProfile(false);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      showNotification("Error saving to database.");
+    }
   };
 
-  const handleAddToCalendar = (event) => {
-    showNotification(`Added "${event.title}" to your calendar.`);
-  };
+
 
   const handleNotifyMe = (event) => {
     showNotification(`Reminders enabled for "${event.title}".`);
@@ -966,7 +1008,7 @@ export default function GoalHubApp() {
                       <h2 className="text-3xl md:text-4xl font-bold mb-1">{userRole === 'admin' ? 'Headquarters' : 'Operations'}</h2>
                       <p className={theme.textSub}>Welcome back, {userProfile.name}.</p>
                     </div>
-                    <div className={`flex flex-wrap gap-2 p-1 rounded-xl md:rounded-full border w-full md:w-auto justify-start ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
+                    <div className={`flex flex-wrap gap-2 p-1 rounded-xl md:rounded-full border w-full md:w-auto justify-start ${isDarkMode ? 'bg-black/40 backdrop-blur-md border-white/10' : 'bg-slate-100 border-slate-200'}`}>
                       <button onClick={() => setDashboardTab('calendar')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'calendar' ? theme.navPillActive : ''}`}>Calendar</button>
                       <button onClick={() => setDashboardTab('bookings')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'bookings' ? theme.navPillActive : ''}`}>Bookings</button>
                       <button onClick={() => setDashboardTab('events_mgmt')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'events_mgmt' ? theme.navPillActive : ''}`}>Events</button>
@@ -1255,66 +1297,12 @@ export default function GoalHubApp() {
                   )}
 
                   {dashboardTab === 'notifications' && (
-                    <div className={theme.card}>
-                      <div className={`p-6 flex justify-between items-center ${theme.tableHeader}`}>
-                        <div>
-                          <h3 className={`font-bold text-lg ${theme.text}`}>Notifications</h3>
-                          <p className="text-xs">All system and booking notifications</p>
-                        </div>
-                        {notifications.filter(n => !n.read).length > 0 && (
-                          <button
-                            onClick={() => setNotifications(notifications.map(n => ({ ...n, read: true })))}
-                            className={`text-xs ${theme.textAccent} hover:underline`}
-                          >
-                            Mark all as read
-                          </button>
-                        )}
-                      </div>
-                      <div className="p-6 space-y-3">
-                        {notifications.length === 0 ? (
-                          <div className="text-center py-12">
-                            <Bell className={`h-16 w-16 mx-auto mb-4 ${theme.textSub} opacity-50`} />
-                            <p className={theme.textSub}>No notifications yet</p>
-                          </div>
-                        ) : (
-                          notifications.map(notif => (
-                            <div
-                              key={notif.id}
-                              className={`p-4 rounded-2xl border transition cursor-pointer ${notif.read
-                                ? (isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100 opacity-70')
-                                : (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200')
-                                }`}
-                              onClick={() => setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n))}
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    {notif.type === 'booking' && <CalendarIcon className="h-4 w-4 text-emerald-500" />}
-                                    {notif.type === 'payment' && <DollarSign className="h-4 w-4 text-emerald-500" />}
-                                    {notif.type === 'system' && <Settings className="h-4 w-4 text-gray-500" />}
-                                    <span className={`text-xs uppercase font-bold ${theme.textSub}`}>{notif.type}</span>
-                                    {!notif.read && <span className="h-2 w-2 bg-emerald-500 rounded-full"></span>}
-                                  </div>
-                                  <p className={`${theme.text} font-medium`}>{notif.message}</p>
-                                  <p className={`text-xs ${theme.textSub} mt-2`}>
-                                    {new Date(notif.timestamp).toLocaleString()}
-                                  </p>
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNotifications(notifications.filter(n => n.id !== notif.id));
-                                  }}
-                                  className="text-gray-400 hover:text-red-500 transition"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <NotificationsPanel
+                      notifications={notifications}
+                      setNotifications={setNotifications}
+                      theme={theme}
+                      isDarkMode={isDarkMode}
+                    />
                   )}
 
                   {dashboardTab === 'profile' && (
@@ -1444,6 +1432,36 @@ export default function GoalHubApp() {
                 <div><p className={`text-xs uppercase tracking-wider font-bold mb-2 ${theme.textSub}`}>Booking Ref</p><p className="text-3xl font-mono font-bold tracking-widest">{confirmedBooking.id}</p></div>
                 <div className="bg-white p-4 rounded-2xl inline-block shadow-inner"><QrCode className="h-32 w-32 text-black" /></div>
                 <div className={`space-y-2 text-sm ${theme.textSub}`}><p>Show this QR code at the gate.</p><p>A copy has been sent to {confirmedBooking.customer}</p></div>
+
+                {/* Logic for Add to Calendar & Notify */}
+                <div className="flex gap-4 w-full">
+                  <a
+                    href={getGoogleCalendarUrl(confirmedBooking)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <CalendarIcon className="h-5 w-5" /> Calendar
+                  </a>
+                  <button
+                    onClick={() => {
+                      if (userRole !== 'guest') {
+                        setDashboardTab('notifications');
+                        navigateTo('dashboard');
+                      } else {
+                        // If guest, maybe show a toast or navigate to login? 
+                        // For now just show toast as per request implies functionality
+                        // But since we are in success view, likely navigating to dashboard is safe if they have an account
+                        navigateTo('login'); // Or dashboard if we auto-log them in? 
+                        // Let's stick to navigating to dashboard notifications if user, else just toast
+                      }
+                    }}
+                    className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Bell className="h-5 w-5" /> Notify
+                  </button>
+                </div>
+
                 <button onClick={() => navigateTo('landing')} className={theme.btnSecondary + " w-full"}>Done</button>
               </div>
             </div>

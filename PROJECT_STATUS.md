@@ -14,6 +14,8 @@ We have successfully begun moving from a monolithic `App.jsx` to a modular archi
 - **Components**:
   - `Navbar`: Extracted to `src/components/Navbar.jsx`.
   - `Footer`: Extracted to `src/components/Footer.jsx`.
+  - `NotificationsPanel`: Extracted to `src/components/NotificationsPanel.jsx`.
+- **Utils**: Created `src/utils/calendarUtils.js` for logic extraction.
 
 ## 3. Production Checklist (ToDo)
 
