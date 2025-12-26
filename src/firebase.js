@@ -1,20 +1,25 @@
 import { initializeApp } from 'firebase/app';
+import { getAnalytics } from 'firebase/analytics';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // Firebase configuration
-// TODO: Replace with your actual Firebase project credentials
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAkeKpob-TwhGhRR4fPns9T3_txB9QplxI",
+  authDomain: "goalhub-prod.firebaseapp.com",
+  projectId: "goalhub-prod",
+  storageBucket: "goalhub-prod.firebasestorage.app",
+  messagingSenderId: "294205667072",
+  appId: "1:294205667072:web:992f56b74342c2692c25e5",
+  measurementId: "G-104L8JVFEC"
 };
 
 // Initialize Firebase
+
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // Google Sign-In function
