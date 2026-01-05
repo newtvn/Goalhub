@@ -61,6 +61,7 @@ class BookingResponse(BookingBase):
     status: str
     payment_id: Optional[UUID] = None
     created_at: datetime
+    turf: Optional[TurfResponse] = None # Include full turf details
     
     class Config:
         from_attributes = True

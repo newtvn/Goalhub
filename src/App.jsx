@@ -8,7 +8,7 @@ import {
   Globe, ExternalLink, Tag, Percent, FileDown, Download, MoreVertical,
   Sun, Moon, ArrowRight, Smartphone
 } from 'lucide-react';
-import { signInWithGoogle, signOutUser, auth, db } from './firebase';
+import { signInWithGoogle, signOutUser, auth, db, loginUser, registerUser, onAuthStateChangedListener } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDocs, where
@@ -41,6 +41,8 @@ export default function GoalHubApp() {
   const [password, setPassword] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   // User/Admin/Manager Profile State
   const [userProfile, setUserProfile] = useState({
@@ -87,6 +89,8 @@ export default function GoalHubApp() {
   // Notifications
   const [notification, setNotification] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState({ revenue: 0, bookings: 0, users: 0, recent_activity: [] });
+  const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
     const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
@@ -301,12 +305,17 @@ export default function GoalHubApp() {
   useEffect(() => {
     const fetchBookings = async () => {
       if (userRole !== 'admin' && userRole !== 'manager') {
-        return; // Only fetch for admin/manager
+        return;
       }
+
+      const token = userProfile.token;
+      if (!token) return;
 
       try {
         setIsLoadingBookings(true);
-        const response = await fetch('http://localhost:8000/api/bookings/');
+        const response = await fetch('http://localhost:8000/api/bookings/', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) {
           const data = await response.json();
           setBookings(data);
@@ -320,8 +329,10 @@ export default function GoalHubApp() {
       }
     };
 
-    fetchBookings();
-  }, [userRole]);
+    if (dashboardTab === 'bookings' || dashboardTab === 'calendar') {
+      fetchBookings();
+    }
+  }, [userRole, dashboardTab, userProfile.token]);
 
   // Fetch Events from API
   useEffect(() => {
@@ -385,36 +396,123 @@ export default function GoalHubApp() {
       }
     };
     fetchNotifications();
+
+    if (userRole === 'admin' || userRole === 'manager') {
+      const fetchStats = async () => {
+        try {
+          // Retrieve token for current user
+          const token = userProfile.token;
+          if (!token) return;
+
+          const response = await fetch('http://localhost:8000/api/dashboard/stats', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setDashboardStats(data);
+          }
+
+          // Fetch Chart Data
+          const chartResponse = await fetch('http://localhost:8000/api/dashboard/chart-data', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (chartResponse.ok) {
+            const chartData = await chartResponse.json();
+            setChartData(chartData);
+          }
+        } catch (e) { console.error("Stats fetch error", e); }
+      };
+      fetchStats();
+    }
   }, [userRole]);
 
   // --- AUTHENTICATION ---
-  const handleLoginSubmit = () => {
-    navigateTo('processing_login');
-    setTimeout(() => {
-      if (username.toLowerCase().includes('admin')) {
-        setUserRole('admin');
-        setUserProfile({
-          name: 'Chief Admin',
-          email: 'admin@goalhub.ke',
-          phone: '+254 700 000 000',
-          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'
-        });
-        navigateTo('dashboard');
-      } else if (username.toLowerCase().includes('manager')) {
-        setUserRole('manager');
-        setUserProfile({
-          name: 'Manager John',
-          email: 'manager@goalhub.ke',
-          phone: '+254 722 000 000',
-          avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=100'
-        });
-        navigateTo('dashboard');
+
+  // Auth Persistence Listener
+  useEffect(() => {
+    // Navigate only if we are on login page, otherwise stay where we are (or go dashboard if on landing)
+    // Actually, mainly we just want to restore state.
+
+    const unsubscribe = onAuthStateChangedListener(async (firebaseUser) => {
+      if (firebaseUser) {
+        console.log("Auth State Restored:", firebaseUser.email);
+        const token = await firebaseUser.getIdToken();
+        await syncUserWithBackend(firebaseUser, token);
+        // If we were on login page, move to dashboard. If on landing, stay or move?
+        // Let's safe bet: navigate to dashboard if on login/landing.
+        if (currentView === 'login' || currentView === 'landing') {
+          navigateTo('dashboard');
+        }
       } else {
-        setUserRole('user');
-        setUserProfile({ ...userProfile, name: 'Alex K.', email: username || 'alex@goalhub.ke' });
-        navigateTo('dashboard');
+        console.log("No Auth User found.");
+        // Optional: clear user state if needed
+        // setUserRole('guest');
       }
-    }, 1500);
+      setIsAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const syncUserWithBackend = async (firebaseUser, token) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/users/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUserRole(userData.role || 'user');
+        setUserProfile({
+          name: userData.name || firebaseUser.displayName || 'User',
+          email: userData.email || firebaseUser.email,
+          phone: userData.phone || userProfile.phone,
+          avatar: userData.avatar || firebaseUser.photoURL || userProfile.avatar,
+          token: token,
+          id: userData.id
+        });
+        showNotification(`✅ Welcome back, ${userData.name || firebaseUser.displayName || 'User'}!`);
+        setTimeout(() => navigateTo('dashboard'), 1500);
+      } else {
+        console.error("Backend sync failed:", await response.text());
+        // Fallback or retry? For now let them in with limited profile
+        setUserRole('user');
+        setUserProfile({
+          name: firebaseUser.displayName || 'User',
+          email: firebaseUser.email,
+          token: token,
+          ...userProfile
+        });
+        showNotification('⚠️ Logged in, but profile sync failed.');
+        setTimeout(() => navigateTo('dashboard'), 1500);
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
+      showNotification('⚠️ Backend not reachable.');
+      setUserProfile({ ...userProfile, token }); // At least save token
+      setUserRole('user');
+      setTimeout(() => navigateTo('dashboard'), 1500);
+    }
+  };
+
+  const handleLoginSubmit = async () => {
+    navigateTo('processing_login');
+
+    let result;
+    if (isSignUp) {
+      result = await registerUser(username, password);
+    } else {
+      result = await loginUser(username, password);
+    }
+
+    if (result.success) {
+      await syncUserWithBackend(result.user, result.user.token);
+    } else {
+      showNotification(`❌ ${isSignUp ? 'Signup' : 'Login'} failed: ${result.error}`);
+      setTimeout(() => navigateTo('login'), 2000);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -422,26 +520,7 @@ export default function GoalHubApp() {
     const result = await signInWithGoogle();
 
     if (result.success) {
-      if (result.user.email === 'newtvnbrian@gmail.com') {
-        setUserRole('admin');
-      } else {
-        const q = query(collection(db, 'users'), where('email', '==', result.user.email.toLowerCase()), where('status', '==', 'Active'));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const staffData = querySnapshot.docs[0].data();
-          setUserRole(staffData.role);
-        } else {
-          setUserRole('user');
-        }
-      }
-      setUserProfile({
-        name: result.user.displayName || 'User',
-        email: result.user.email,
-        phone: userProfile.phone,
-        avatar: result.user.photoURL || userProfile.avatar
-      });
-      showNotification(`✅ Welcome back, ${result.user.displayName}!`);
-      setTimeout(() => navigateTo('dashboard'), 1500);
+      await syncUserWithBackend(result.user, result.user.token);
     } else {
       console.error("Sign-in Error:", result.error);
       // Show the exact error message to help debugging (e.g. "This domain is not authorized")
@@ -471,67 +550,17 @@ export default function GoalHubApp() {
   };
 
   // --- M-PESA PAYMENT INTEGRATION ---
+  // --- M-PESA PAYMENT INTEGRATION (MOCKED) ---
   const processPayment = async () => {
     navigateTo('processing_payment');
 
     const custName = userRole === 'user' ? userProfile.name : customerDetails.name;
-    const paymentPhone = customerDetails.phone || userProfile.phone;
-    const formattedPhone = formatPhoneNumber(paymentPhone || '0700000000');
-    const amount = Math.ceil(calculateTotal());
 
-    try {
-      const response = await fetch('/api/stkpush', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: formattedPhone,
-          amount: amount
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ STK Push initiated:", data);
-
-        // Check if STK push was successfully sent
-        if (data.ResponseCode === "0") {
-          // STK Push sent successfully - Now wait for user to complete payment
-          showNotification("📱 Check your phone and enter M-Pesa PIN");
-
-          // Store CheckoutRequestID to poll for payment status
-          const requestId = data.CheckoutRequestID;
-
-          // Start polling for payment confirmation
-          pollPaymentStatus(requestId, custName);
-
-          // --- DEV MODE ONLY: SIMULATE SUCCESS ---
-          // Since Safaricom cannot reach localhost callbacks, we simulate a success event 
-          // after 5 seconds if the user is testing locally.
-          if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')) {
-            console.log("⚠️ Dev Mode: Auto-simulating payment success in 8s...");
-            setTimeout(() => {
-              showNotification("✅ (Simulation) Payment Confirmed!");
-              completeBooking(custName);
-            }, 8000);
-          }
-        } else {
-          // STK push failed
-          showNotification("❌ Payment request failed. Please try again.");
-          setTimeout(() => navigateTo('checkout'), 2000);
-        }
-      } else {
-        // Server error or M-Pesa error
-        const errorData = await response.json();
-        console.warn("M-Pesa API Error:", errorData);
-        showNotification("❌ Payment service error. Please try again.");
-        setTimeout(() => navigateTo('checkout'), 3000);
-      }
-
-    } catch (error) {
-      console.error("Backend server connection failed:", error);
-      showNotification("❌ Cannot connect to payment server. Please ensure backend is running.");
-      setTimeout(() => navigateTo('checkout'), 3000);
-    }
+    // Simulate API delay
+    setTimeout(() => {
+      showNotification("✅ Payment successful! (Mocked)");
+      completeBooking(custName);
+    }, 3000);
   };
 
   // Poll payment status until completed or timeout
@@ -573,58 +602,83 @@ export default function GoalHubApp() {
   };
 
   const completeBooking = async (custName) => {
-    const newBooking = {
-      turf: selectedTurf.name,
+    const bookingData = {
+      turf_id: selectedTurf.id, // Ensure this maps to UUID if backend expects UUID, or handle mapping
       date: bookingDate,
-      time: selectedTime,
+      time_slot: selectedTime,
       duration: duration,
-      customer: custName,
-      status: 'Confirmed',
       amount: calculateTotal(),
-      payment: 'M-Pesa',
-      extras: cartExtras.map(({ icon, ...rest }) => rest),
-      timestamp: new Date().toISOString()
+      customer_name: custName,
+      customer_phone: customerDetails.phone || userProfile.phone,
+      customer_email: customerDetails.email || userProfile.email,
+      extras: cartExtras
     };
 
     try {
-      // 1. Add Booking
-      const docRef = await addDoc(collection(db, 'bookings'), newBooking);
-      setConfirmedBooking({ id: docRef.id, ...newBooking });
-
-      // 2. Add Notification
-      await addDoc(collection(db, 'notifications'), {
-        type: 'booking',
-        message: `New Booking: ${custName} @ ${selectedTurf.name}`,
-        timestamp: new Date().toISOString(),
-        read: false
+      const response = await fetch('http://localhost:8000/api/bookings/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userProfile.token}`
+        },
+        body: JSON.stringify(bookingData)
       });
 
-      setPendingAdminNotifications(prev => [...prev, `New Booking Confirmed! ${custName} @ ${selectedTurf.name}`]);
+      if (response.ok) {
+        const newBooking = await response.json();
+        // Update local state with the returned booking from backend
+        setBookings([newBooking, ...bookings]);
+        setConfirmedBooking(newBooking);
+        setPendingAdminNotifications(prev => [...prev, `New Booking Confirmed! ${custName} @ ${selectedTurf.name}`]);
+        navigateTo('success');
+      } else {
+        console.error("Booking failed:", await response.text());
+        showNotification("⚠️ Booking processed, but failed to save to server.");
+        // Fallback to local state just to show success screen
+        setConfirmedBooking({ ...bookingData, id: 'LOCAL-ERR', turf: selectedTurf.name });
+        navigateTo('success');
+      }
+    } catch (error) {
+      console.error("Booking network error:", error);
+      showNotification("⚠️ Network error saving booking.");
+      setConfirmedBooking({ ...bookingData, id: 'NET-ERR', turf: selectedTurf.name });
       navigateTo('success');
-    } catch (e) {
-      console.error("Booking Error: ", e);
-      showNotification("Error saving booking. Please contact support.");
     }
   };
 
   // --- OTHER HANDLERS ---
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+
+    if (!userProfile.id) {
+      showNotification("❌ Error: User ID missing. Please reload.");
+      return;
+    }
+
     try {
-      if (userProfile.id) {
-        await updateDoc(doc(db, 'users', userProfile.id), {
+      const response = await fetch(`http://localhost:8000/api/users/${userProfile.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userProfile.token}`
+        },
+        body: JSON.stringify({
           name: userProfile.name,
           phone: userProfile.phone,
           email: userProfile.email
-        });
-        showNotification("Profile and database updated successfully");
+        })
+      });
+
+      if (response.ok) {
+        showNotification("✅ Profile updated successfully");
+        setIsEditingProfile(false);
       } else {
-        showNotification("Profile updated (Session Only)");
+        const err = await response.json();
+        showNotification(`❌ Update failed: ${err.detail || 'Unknown error'}`);
       }
-      setIsEditingProfile(false);
     } catch (error) {
-      console.error("Error updating profile:", error);
-      showNotification("Error saving to database.");
+      console.error("Profile update error:", error);
+      showNotification("❌ Network error updating profile");
     }
   };
 
@@ -699,21 +753,41 @@ export default function GoalHubApp() {
     }
   };
 
+  /* --- UPDATED HANDLERS FOR BACKEND --- */
   const handleSaveBooking = async (e) => {
     e.preventDefault();
+    if (!editingBooking.id) return;
+
+    // Optimistic Update
+    const updated = { ...editingBooking };
+    setBookings(bookings.map(b => b.id === updated.id ? updated : b));
+    setEditingBooking(null); // Close immediately
+
     try {
-      if (editingBooking.id === 'new') {
-        const { id, ...bookingData } = editingBooking;
-        const newBooking = { ...bookingData, status: 'Confirmed', payment: 'Cash (Manual)', timestamp: new Date().toISOString() };
-        await addDoc(collection(db, 'bookings'), newBooking);
+      const response = await fetch(`http://localhost:8000/api/bookings/${updated.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userProfile.token}`
+        },
+        body: JSON.stringify({
+          status: updated.status,
+          date: updated.date,
+          time_slot: updated.time_slot,
+          turf_id: updated.turf_id
+        })
+      });
+
+      if (response.ok) {
+        showNotification("✅ Booking updated successfully");
       } else {
-        const { id, ...bookingData } = editingBooking;
-        await updateDoc(doc(db, 'bookings', id), bookingData);
+        console.error("Update failed", await response.text());
+        showNotification("⚠️ Failed to save changes to server");
+        // Revert or fetch fresh could go here
       }
-      setEditingBooking(null);
-      showNotification("Booking saved.");
     } catch (e) {
-      showNotification("Error saving booking.");
+      console.error(e);
+      showNotification("❌ Network error saving booking");
     }
   };
 
@@ -737,6 +811,14 @@ export default function GoalHubApp() {
   };
 
   // --- RENDERERS ---
+
+  if (isAuthLoading) {
+    return (
+      <div className={`min-h-screen font-sans ${theme.text} bg-black flex items-center justify-center`}>
+        <Loader2 className="h-10 w-10 text-emerald-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen font-sans ${theme.text} selection:bg-emerald-500/30 selection:text-emerald-600 antialiased flex flex-col transition-colors duration-300 relative overflow-x-hidden`}>
@@ -1294,16 +1376,43 @@ export default function GoalHubApp() {
                   {dashboardTab === 'calendar' && (
                     <>
                       {userRole === 'admin' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Daily Revenue</p><h3 className="text-3xl font-bold text-emerald-500">KES {calculateFinancials('day').toLocaleString()}</h3></div>
-                          <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Weekly Revenue</p><h3 className="text-3xl font-bold">KES {calculateFinancials('week').toLocaleString()}</h3></div>
-                          <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Monthly Revenue</p><h3 className="text-3xl font-bold text-purple-500">KES {calculateFinancials('month').toLocaleString()}</h3></div>
-                        </div>
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Total Revenue</p><h3 className="text-3xl font-bold text-emerald-500">KES {(dashboardStats.revenue || 0).toLocaleString()}</h3></div>
+                            <div onClick={() => setDashboardTab('bookings')} className={`${theme.card} p-6 relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Total Bookings</p><h3 className="text-3xl font-bold">{(dashboardStats.bookings || 0).toLocaleString()}</h3></div>
+                            <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Total Users</p><h3 className="text-3xl font-bold text-purple-500">{(dashboardStats.users || 0).toLocaleString()}</h3></div>
+                          </div>
+
+                          {/* REVENUE CHART */}
+                          <div className={`${theme.card} p-6 mt-6`}>
+                            <h3 className="font-bold text-lg mb-4">Revenue Trends (Last 7 Days)</h3>
+                            <div className="h-48 w-full flex items-end justify-between gap-2">
+                              {chartData.length > 0 ? chartData.map((d, i) => {
+                                const maxVal = Math.max(...chartData.map(c => c.revenue)) || 100;
+                                const height = (d.revenue / maxVal) * 100;
+                                return (
+                                  <div key={i} className="flex flex-col items-center w-full group relative">
+                                    <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 bg-black text-white text-xs px-2 py-1 rounded transition-opacity">
+                                      KES {d.revenue.toLocaleString()}
+                                    </div>
+                                    <div
+                                      style={{ height: `${height}%`, minHeight: '4px' }}
+                                      className={`w-full rounded-t-sm transition-all duration-500 ${isDarkMode ? 'bg-emerald-500/50 hover:bg-emerald-400' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                                    ></div>
+                                    <span className="text-xs mt-2 text-gray-500">{d.date}</span>
+                                  </div>
+                                )
+                              }) : <div className="text-gray-500 w-full text-center self-center">No data available</div>}
+                            </div>
+                          </div>
+                        </>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Today's Slots</p><h3 className="text-3xl font-bold text-emerald-500">4 / 16 Booked</h3></div>
-                          <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Next Booking</p><h3 className="text-2xl font-bold">18:00 - Allianz</h3></div>
-                        </div>
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Today's Slots</p><h3 className="text-3xl font-bold text-emerald-500">4 / 16 Booked</h3></div>
+                            <div className={`${theme.card} p-6 relative overflow-hidden`}><p className={`text-sm font-bold uppercase mb-1 ${theme.textSub}`}>Next Booking</p><h3 className="text-2xl font-bold">18:00 - Allianz</h3></div>
+                          </div>
+                        </>
                       )}
                       <div className={theme.card + " p-4 md:p-6"}>
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
@@ -1347,11 +1456,47 @@ export default function GoalHubApp() {
                         </div>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm min-w-[600px]">
-                          <thead className={theme.tableHeader}><tr><th className="p-4 pl-6">Ref</th><th className="p-4">Name</th><th className="p-4">Details</th><th className="p-4">Status</th><th className="p-4 text-right pr-6">Action</th></tr></thead>
+                        <table className="w-full text-left text-sm min-w-[800px]">
+                          <thead className={theme.tableHeader}>
+                            <tr>
+                              <th className="p-4 pl-6">When</th>
+                              <th className="p-4">Where (Turf)</th>
+                              <th className="p-4">Who (Customer)</th>
+                              <th className="p-4">Payment</th>
+                              <th className="p-4 text-right pr-6">Action</th>
+                            </tr>
+                          </thead>
                           <tbody className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-slate-100'}>
-                            {bookings.filter(b => b.id.toLowerCase().includes(searchTerm.toLowerCase()) || b.customer.toLowerCase().includes(searchTerm.toLowerCase()) || b.turf.toLowerCase().includes(searchTerm.toLowerCase())).map(b => (
-                              <tr key={b.id} className={theme.tableRow}><td className="p-4 pl-6 font-mono text-emerald-500">{b.id}</td><td className="p-4">{b.customer}</td><td className={`p-4 ${theme.textSub}`}>{b.turf} <br /><span className="text-xs">{b.date}</span></td><td className="p-4"><span className="px-2 py-1 bg-emerald-500/20 text-emerald-600 rounded text-xs">{b.status}</span></td><td className="p-4 text-right"><button onClick={() => setEditingBooking(b)} className="text-gray-400"><Edit2 className="h-4 w-4" /></button></td></tr>
+                            {bookings.filter(b => b.id.toLowerCase().includes(searchTerm.toLowerCase()) || (b.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase())).sort((a, b) => new Date(b.date) - new Date(a.date)).map(b => (
+                              <tr key={b.id} className={`${theme.tableRow} group`}>
+                                <td className="p-4 pl-6">
+                                  <div className="font-bold text-base">{b.time_slot}</div>
+                                  <div className={`text-xs ${theme.textSub}`}>{new Date(b.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                                </td>
+                                <td className="p-4">
+                                  <div className="font-bold text-emerald-500">
+                                    {b.turf?.name || turfs.find(t => t.id === b.turf_id)?.name || 'Unknown Turf'}
+                                  </div>
+                                  <div className="text-xs text-xs font-mono opacity-50">#{b.id.slice(0, 6)}</div>
+                                </td>
+                                <td className="p-4">
+                                  <div className="font-bold">{b.customer_name || 'Guest'}</div>
+                                  {b.customer_phone && <div className={`text-xs flex items-center ${theme.textSub}`}><Phone className="h-3 w-3 mr-1" /> {b.customer_phone}</div>}
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase border ${b.status === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'}`}>
+                                      {b.status}
+                                    </span>
+                                    <span className="font-bold text-sm">KES {b.amount}</span>
+                                  </div>
+                                </td>
+                                <td className="p-4 text-right">
+                                  <button onClick={() => setEditingBooking(b)} className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition">
+                                    <Edit2 className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
                             ))}
                           </tbody>
                         </table>
@@ -1528,7 +1673,13 @@ export default function GoalHubApp() {
                   <div><label className={`block text-xs font-bold uppercase tracking-wider mb-2 ml-2 ${theme.textSub}`}>Username / Email</label><input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. alex@goalhub.ke" className={theme.input} /></div>
                   <div><label className={`block text-xs font-bold uppercase tracking-wider mb-2 ml-2 ${theme.textSub}`}>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className={theme.input} /></div>
                 </div>
-                <button onClick={handleLoginSubmit} className={`${theme.btnPrimary} w-full`}>Sign In</button>
+                <button onClick={handleLoginSubmit} className={`${theme.btnPrimary} w-full`}>{isSignUp ? 'Sign Up' : 'Sign In'}</button>
+                <div className="mt-4 text-center">
+                  <span className={`text-sm ${theme.textSub}`}>{isSignUp ? "Already have an account?" : "Don't have an account?"}</span>
+                  <button onClick={() => setIsSignUp(!isSignUp)} className="ml-2 text-sm font-bold text-emerald-500 hover:underline">
+                    {isSignUp ? 'Sign In' : 'Sign Up'}
+                  </button>
+                </div>
                 <div className="mt-6 text-center"><button onClick={() => navigateTo('landing')} className={`text-sm ${theme.textSub} hover:text-emerald-500 transition`}>Cancel and return home</button></div>
               </div>
             </div>
@@ -1586,6 +1737,6 @@ export default function GoalHubApp() {
         <Footer theme={theme} isDarkMode={isDarkMode} navigateTo={navigateTo} />
 
       </div> {/* End Content Wrapper */}
-    </div>
+    </div >
   );
 }
