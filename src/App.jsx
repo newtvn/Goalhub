@@ -8,86 +8,25 @@ import {
   Globe, ExternalLink, Tag, Percent, FileDown, Download, MoreVertical,
   Sun, Moon, ArrowRight, Smartphone
 } from 'lucide-react';
-import { signInWithGoogle, signOutUser } from './firebase';
+import { signInWithGoogle, signOutUser, auth, db } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import {
+  collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, setDoc, getDocs, where
+} from 'firebase/firestore';
 
 /**
  * GOALHUB - Football Turf Booking Platform
  * THEMES: Premium Web-Gradient Dark & Spider-Web Light
  */
 
+import { DARK_THEME, LIGHT_THEME } from './theme';
+import { TURFS, EXTRAS, INITIAL_EVENTS, TIME_SLOTS } from './data/mockData';
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import NotificationsPanel from './components/NotificationsPanel';
+import { getGoogleCalendarUrl } from './utils/calendarUtils';
+
 // --- THEME DEFINITIONS ---
-
-const DARK_THEME = {
-  // Very dark green/black (#02100B) gradient with subtle pattern
-  bgClasses: "bg-[#02100B] bg-[url('data:image/svg+xml,%3Csvg width=\\'60\\' height=\\'60\\' viewBox=\\'0 0 60 60\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cg fill=\\'none\\' fill-rule=\\'evenodd\\'%3E%3Cg fill=\\'%23ffffff\\' fill-opacity=\\'0.02\\'%3E%3Cpath d=\\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]",
-  bgGradientFrom: "from-[#02100B]/98 via-[#041812]/85",
-  bgGradientVia: "via-[#02100B]",
-  bgGradientTo: "to-[#000000]",
-
-  text: "text-white",
-  textSub: "text-gray-400",
-  textAccent: "text-emerald-400",
-  card: "bg-[#0a1410]/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl",
-  cardHover: "hover:bg-[#0f1f18]/80 transition-all duration-300 cursor-pointer border-white/20",
-  btnPrimary: "bg-emerald-500 text-black font-medium py-3 px-6 rounded-full hover:bg-emerald-400 active:scale-95 transition-all duration-200 shadow-[0_0_20px_rgba(16,185,129,0.3)]",
-  btnSecondary: "bg-white/10 text-white font-medium py-3 px-6 rounded-full hover:bg-white/20 backdrop-blur-md transition-all duration-200",
-  btnGhost: "bg-transparent text-gray-400 hover:text-white transition-all",
-  input: "w-full bg-white/5 border border-white/10 rounded-2xl p-4 outline-none text-white placeholder:text-gray-600 focus:border-emerald-500/50 focus:bg-white/10 transition-all",
-  navPill: "px-6 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:bg-white/10 text-gray-400 hover:text-white",
-  navPillActive: "bg-white/15 text-white shadow-inner border border-white/5",
-  iconBtn: "p-3 rounded-full bg-white/5 hover:bg-white/10 text-white transition-all",
-  glassNav: "relative z-50 mx-4 md:mx-auto max-w-7xl bg-transparent backdrop-blur-md border border-transparent rounded-full px-8 py-4 mt-6 mb-8",
-  footer: "border-t border-white/5 mt-12 bg-black/60 backdrop-blur-lg py-12",
-  tableHeader: "text-gray-500 font-medium border-b border-white/5",
-  tableRow: "hover:bg-white/5 transition divide-y divide-white/5",
-  divider: "border-white/10"
-};
-
-const LIGHT_THEME = {
-  // Soft beige/cream (#E3EED4) gradient with subtle pattern
-  bgClasses: "bg-[#E3EED4] bg-[url('data:image/svg+xml,%3Csvg width=\\'100\\' height=\\'100\\' viewBox=\\'0 0 100 100\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cpath d=\\'M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z\\' fill=\\'%2394a3b8\\' fill-opacity=\\'0.05\\' fill-rule=\\'evenodd\\'/%3E%3C/svg%3E')]",
-  bgGradientFrom: "from-[#E3EED4]/95 via-[#d4e5c0]/80",
-  bgGradientVia: "via-[#E3EED4]",
-  bgGradientTo: "to-[#c9dbb5]",
-
-  text: "text-slate-900",
-  textSub: "text-slate-500",
-  textAccent: "text-emerald-600",
-  card: "bg-white/70 backdrop-blur-xl border border-white/60 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)]",
-  cardHover: "hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] hover:-translate-y-1 hover:bg-white/90 transition-all duration-300 cursor-pointer",
-  btnPrimary: "bg-emerald-600 text-white font-medium py-3 px-6 rounded-full hover:bg-emerald-700 active:scale-95 transition-all duration-200 shadow-lg shadow-emerald-600/20",
-  btnSecondary: "bg-white/80 text-slate-700 font-medium py-3 px-6 rounded-full hover:bg-white border border-slate-200 transition-all duration-200 shadow-sm",
-  btnGhost: "bg-transparent text-slate-400 hover:text-slate-900 transition-all",
-  input: "w-full bg-white/50 border border-slate-200 rounded-2xl p-4 outline-none text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-inner",
-  navPill: "px-6 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:bg-slate-200/50 text-slate-500 hover:text-slate-900",
-  navPillActive: "bg-white text-slate-900 shadow-sm border border-slate-100",
-  iconBtn: "p-3 rounded-full bg-white/60 border border-white/50 hover:bg-white text-slate-600 transition-all shadow-sm",
-  glassNav: "relative z-50 mx-4 md:mx-auto max-w-7xl bg-transparent backdrop-blur-md border border-transparent rounded-full px-8 py-4 mt-6 mb-8",
-  footer: "border-t border-slate-200 mt-12 bg-white/60 backdrop-blur-lg py-12",
-  tableHeader: "text-slate-400 font-medium border-b border-slate-100",
-  tableRow: "hover:bg-slate-50/50 transition divide-y divide-slate-100",
-  divider: "border-slate-100"
-};
-
-// --- MOCK DATA ---
-
-const TURFS = [
-  { id: 1, name: 'Allianz Arena', location: 'Kitengela, Namanga Rd', type: '5-a-side', price: 2500, image: 'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&q=80&w=800' },
-  { id: 2, name: 'Camp Nou', location: 'Kitengela, CBD', type: '7-a-side', price: 3500, image: 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?auto=format&fit=crop&q=80&w=800' }
-];
-
-const EXTRAS = [
-  { id: 'ball', name: 'Pro Match Ball', sub: 'Size 5', price: 150, icon: <CheckCircle className="h-5 w-5" /> },
-  { id: 'water', name: 'Water Case', sub: '24 Bottles', price: 800, icon: <CheckCircle className="h-5 w-5" /> }
-];
-
-
-
-const TIME_SLOTS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00",
-  "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
-  "20:00", "21:00", "22:00"
-];
 
 // --- COMPONENT: MAIN APP ---
 
@@ -112,13 +51,18 @@ export default function GoalHubApp() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  // Turfs State - Fetch from API
-  const [turfs, setTurfs] = useState([]);
-  const [isLoadingTurfs, setIsLoadingTurfs] = useState(true);
-
+  // Events State
   // Events State
   const [eventsList, setEventsList] = useState([]);
-  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'events'), (snapshot) => {
+      setEventsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.warn("Firestore connection blocked (likely AdBlocker):", error);
+    });
+    return () => unsubscribe();
+  }, []);
   const [editingEvent, setEditingEvent] = useState(null);
 
   // Booking State
@@ -140,18 +84,42 @@ export default function GoalHubApp() {
   const [globalDiscount, setGlobalDiscount] = useState(0);
 
   // Notifications
+  // Notifications
   const [notification, setNotification] = useState(null);
   const [notifications, setNotifications] = useState([]);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Users Data
+  // Users Data
   const [users, setUsers] = useState([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
   const [editingUser, setEditingUser] = useState(null);
 
-  // Bookings Data - Fetch from API for admin/manager
+  // Bookings Data
+  // Bookings Data
   const [bookings, setBookings] = useState([]);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+
+  useEffect(() => {
+    // Basic query, can be refined
+    const q = query(collection(db, 'bookings'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
   const [editingBooking, setEditingBooking] = useState(null);
 
   // Reports
@@ -229,6 +197,69 @@ export default function GoalHubApp() {
   };
 
   // --- EFFECTS ---
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Check/Create User in Firestore
+        const checkUserAndCreate = async () => {
+          const email = user.email.toLowerCase();
+          const q = query(collection(db, 'users'), where('email', '==', email));
+          const querySnapshot = await getDocs(q);
+
+          let docId = null;
+          let role = 'user';
+          let phone = user.phoneNumber || '0700000000';
+          let name = user.displayName || 'User';
+          let avatar = user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100';
+
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            docId = querySnapshot.docs[0].id;
+            role = userData.role || 'user';
+            if (userData.phone) phone = userData.phone;
+            if (userData.name) name = userData.name;
+            // Keep original logic for hardcoded admin
+            if (email === 'newtvnbrian@gmail.com') role = 'admin';
+          } else {
+            // Create new user doc
+            const newUserData = {
+              name,
+              email,
+              phone,
+              role: email === 'newtvnbrian@gmail.com' ? 'admin' : 'user',
+              status: 'Active',
+              avatar,
+              createdAt: new Date().toISOString()
+            };
+            try {
+              const docRef = await addDoc(collection(db, 'users'), newUserData);
+              docId = docRef.id;
+              role = newUserData.role;
+            } catch (e) {
+              console.error("Error creating user profile in DB:", e);
+            }
+          }
+
+          setUserRole(role);
+          setUserProfile({
+            id: docId,
+            name,
+            email,
+            phone,
+            avatar
+          });
+        };
+        checkUserAndCreate();
+
+        if (currentView === 'login' || currentView === 'processing_login') {
+          navigateTo('dashboard');
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentView]);
 
   useEffect(() => {
     if ((userRole === 'admin' || userRole === 'manager') && pendingAdminNotifications.length > 0) {
@@ -391,7 +422,18 @@ export default function GoalHubApp() {
     const result = await signInWithGoogle();
 
     if (result.success) {
-      setUserRole('user');
+      if (result.user.email === 'newtvnbrian@gmail.com') {
+        setUserRole('admin');
+      } else {
+        const q = query(collection(db, 'users'), where('email', '==', result.user.email.toLowerCase()), where('status', '==', 'Active'));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const staffData = querySnapshot.docs[0].data();
+          setUserRole(staffData.role);
+        } else {
+          setUserRole('user');
+        }
+      }
       setUserProfile({
         name: result.user.displayName || 'User',
         email: result.user.email,
@@ -401,8 +443,10 @@ export default function GoalHubApp() {
       showNotification(`✅ Welcome back, ${result.user.displayName}!`);
       setTimeout(() => navigateTo('dashboard'), 1500);
     } else {
-      showNotification('❌ Google Sign-In failed. Please try again.');
-      setTimeout(() => navigateTo('login'), 2000);
+      console.error("Sign-in Error:", result.error);
+      // Show the exact error message to help debugging (e.g. "This domain is not authorized")
+      showNotification(`❌ ${result.error || 'Google Sign-In failed.'}`);
+      setTimeout(() => navigateTo('login'), 3000);
     }
   };
 
@@ -436,7 +480,7 @@ export default function GoalHubApp() {
     const amount = Math.ceil(calculateTotal());
 
     try {
-      const response = await fetch('http://localhost:8000/api/stkpush', {
+      const response = await fetch('/api/stkpush', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -459,6 +503,17 @@ export default function GoalHubApp() {
 
           // Start polling for payment confirmation
           pollPaymentStatus(requestId, custName);
+
+          // --- DEV MODE ONLY: SIMULATE SUCCESS ---
+          // Since Safaricom cannot reach localhost callbacks, we simulate a success event 
+          // after 5 seconds if the user is testing locally.
+          if (window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')) {
+            console.log("⚠️ Dev Mode: Auto-simulating payment success in 8s...");
+            setTimeout(() => {
+              showNotification("✅ (Simulation) Payment Confirmed!");
+              completeBooking(custName);
+            }, 8000);
+          }
         } else {
           // STK push failed
           showNotification("❌ Payment request failed. Please try again.");
@@ -490,7 +545,7 @@ export default function GoalHubApp() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/payment-status/${requestId}`);
+      const response = await fetch(`/api/payment-status/${requestId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -517,9 +572,8 @@ export default function GoalHubApp() {
     }
   };
 
-  const completeBooking = (custName) => {
+  const completeBooking = async (custName) => {
     const newBooking = {
-      id: `GH-${Math.floor(Math.random() * 10000)}`,
       turf: selectedTurf.name,
       date: bookingDate,
       time: selectedTime,
@@ -528,75 +582,139 @@ export default function GoalHubApp() {
       status: 'Confirmed',
       amount: calculateTotal(),
       payment: 'M-Pesa',
-      extras: cartExtras,
+      extras: cartExtras.map(({ icon, ...rest }) => rest),
       timestamp: new Date().toISOString()
     };
-    setBookings([newBooking, ...bookings]);
-    setConfirmedBooking(newBooking);
-    setPendingAdminNotifications(prev => [...prev, `New Booking Confirmed! ${custName} @ ${selectedTurf.name}`]);
-    navigateTo('success');
+
+    try {
+      // 1. Add Booking
+      const docRef = await addDoc(collection(db, 'bookings'), newBooking);
+      setConfirmedBooking({ id: docRef.id, ...newBooking });
+
+      // 2. Add Notification
+      await addDoc(collection(db, 'notifications'), {
+        type: 'booking',
+        message: `New Booking: ${custName} @ ${selectedTurf.name}`,
+        timestamp: new Date().toISOString(),
+        read: false
+      });
+
+      setPendingAdminNotifications(prev => [...prev, `New Booking Confirmed! ${custName} @ ${selectedTurf.name}`]);
+      navigateTo('success');
+    } catch (e) {
+      console.error("Booking Error: ", e);
+      showNotification("Error saving booking. Please contact support.");
+    }
   };
 
   // --- OTHER HANDLERS ---
-  const handleUpdateProfile = (e) => {
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    setIsEditingProfile(false);
-    showNotification("Profile updated successfully");
+    try {
+      if (userProfile.id) {
+        await updateDoc(doc(db, 'users', userProfile.id), {
+          name: userProfile.name,
+          phone: userProfile.phone,
+          email: userProfile.email
+        });
+        showNotification("Profile and database updated successfully");
+      } else {
+        showNotification("Profile updated (Session Only)");
+      }
+      setIsEditingProfile(false);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      showNotification("Error saving to database.");
+    }
   };
 
-  const handleAddToCalendar = (event) => {
-    showNotification(`Added "${event.title}" to your calendar.`);
-  };
+
 
   const handleNotifyMe = (event) => {
     showNotification(`Reminders enabled for "${event.title}".`);
   };
 
-  const handleSaveEvent = (e) => {
+  const handleSaveEvent = async (e) => {
     e.preventDefault();
-    if (editingEvent.id === 'new') {
-      const newEvent = { ...editingEvent, id: Date.now(), image: editingEvent.image || 'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&q=80&w=400' };
-      setEventsList([...eventsList, newEvent]);
-      showNotification("New event created successfully.");
-    } else {
-      setEventsList(eventsList.map(ev => ev.id === editingEvent.id ? editingEvent : ev));
-      showNotification("Event details updated.");
+    try {
+      if (editingEvent.id === 'new') {
+        const { id, ...eventData } = editingEvent;
+        await addDoc(collection(db, 'events'), {
+          ...eventData,
+          image: eventData.image || 'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&q=80&w=400'
+        });
+        showNotification("New event created successfully.");
+      } else {
+        const { id, ...eventData } = editingEvent;
+        await updateDoc(doc(db, 'events', id), eventData);
+        showNotification("Event details updated.");
+      }
+      setEditingEvent(null);
+    } catch (e) {
+      showNotification("Error saving event.");
     }
-    setEditingEvent(null);
   };
 
-  const handleDeleteEvent = (id) => {
+  const handleDeleteEvent = async (id) => {
     if (window.confirm('Are you sure you want to delete this event?')) {
-      setEventsList(eventsList.filter(ev => ev.id !== id));
-      showNotification("Event deleted.");
+      try {
+        await deleteDoc(doc(db, 'events', id));
+        showNotification("Event deleted.");
+      } catch (e) {
+        showNotification("Error deleting event.");
+      }
     }
   };
 
-  const handleSaveUser = (e) => {
+  const handleSaveUser = async (e) => {
     e.preventDefault();
-    if (editingUser.id) {
-      setUsers(users.map(u => u.id === editingUser.id ? editingUser : u));
-    } else {
-      setUsers([...users, { ...editingUser, id: Date.now() }]);
+    try {
+      if (editingUser.id) {
+        // Update existing
+        const { id, ...userData } = editingUser;
+        await updateDoc(doc(db, 'users', id), userData);
+      } else {
+        // Create new
+        const { id, ...userData } = editingUser;
+        // Ensure email is lowercase for matching
+        userData.email = userData.email.toLowerCase();
+        await addDoc(collection(db, 'users'), userData);
+      }
+      showNotification("User list updated successfully.");
+      setEditingUser(null);
+    } catch (e) {
+      console.error(e);
+      showNotification("Error saving user.");
     }
-    setEditingUser(null);
   };
 
-  const handleDeleteUser = (id) => {
+  const handleDeleteUser = async (id) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
-      setUsers(users.filter(u => u.id !== id));
+      try {
+        await deleteDoc(doc(db, 'users', id));
+        showNotification("User removed access.");
+      } catch (e) {
+        showNotification("Error removing user.");
+      }
     }
   };
 
-  const handleSaveBooking = (e) => {
+  const handleSaveBooking = async (e) => {
     e.preventDefault();
-    if (editingBooking.id === 'new') {
-      const newB = { ...editingBooking, id: `GH-M-${Math.floor(Math.random() * 1000)}`, status: 'Confirmed', payment: 'Cash (Manual)' };
-      setBookings([newB, ...bookings]);
-    } else {
-      setBookings(bookings.map(b => b.id === editingBooking.id ? editingBooking : b));
+    try {
+      if (editingBooking.id === 'new') {
+        const { id, ...bookingData } = editingBooking;
+        const newBooking = { ...bookingData, status: 'Confirmed', payment: 'Cash (Manual)', timestamp: new Date().toISOString() };
+        await addDoc(collection(db, 'bookings'), newBooking);
+      } else {
+        const { id, ...bookingData } = editingBooking;
+        await updateDoc(doc(db, 'bookings', id), bookingData);
+      }
+      setEditingBooking(null);
+      showNotification("Booking saved.");
+    } catch (e) {
+      showNotification("Error saving booking.");
     }
-    setEditingBooking(null);
   };
 
   const handleSlotClick = (turfName, time) => {
@@ -640,7 +758,7 @@ export default function GoalHubApp() {
       </div>
 
       {/* CONTENT WRAPPER */}
-      <div className="relative z-10">
+      <div className="relative z-10 flex flex-col min-h-screen">
 
         {/* NOTIFICATION TOAST */}
         {notification && (
@@ -653,94 +771,21 @@ export default function GoalHubApp() {
         )}
 
         {/* NAVBAR (Static) */}
-        <nav className={theme.glassNav}>
-          <div className="flex justify-between items-center gap-4">
-            {/* LEFT: LOGO */}
-            <div className="flex items-center cursor-pointer group" onClick={() => navigateTo('landing')}>
-              <span className={`text-2xl tracking-[0.15em] font-extrabold uppercase font-mono transition-colors duration-300 ${isDarkMode ? 'text-white group-hover:text-emerald-400' : 'text-slate-900 group-hover:text-emerald-600'}`}>
-                GoalHub
-              </span>
-            </div>
-
-            {/* CENTER: DESKTOP NAV */}
-            <div className={`hidden md:flex items-center rounded-full p-1.5 gap-2 backdrop-blur-md border transition-all ${isDarkMode ? 'bg-black/20 border-white/5' : 'bg-slate-100/50 border-slate-200'}`}>
-              <button onClick={() => navigateTo('landing')} className={`${theme.navPill} ${currentView === 'landing' ? theme.navPillActive : ''}`}>Home</button>
-              <button onClick={() => navigateTo('events')} className={`${theme.navPill} ${currentView === 'events' ? theme.navPillActive : ''}`}>Events</button>
-              {userRole !== 'guest' && (
-                <button onClick={() => navigateTo('dashboard')} className={`${theme.navPill} ${currentView === 'dashboard' ? theme.navPillActive : ''}`}>Dashboard</button>
-              )}
-            </div>
-
-            {/* RIGHT: PROFILE / LOGIN / MOBILE MENU BTN */}
-            <div className="flex items-center gap-5">
-
-              {/* THEME TOGGLE */}
-              <button onClick={() => setIsDarkMode(!isDarkMode)} className={theme.iconBtn}>
-                {isDarkMode ? <Sun className="h-5 w-5 text-yellow-400" /> : <Moon className="h-5 w-5 text-slate-600" />}
-              </button>
-
-              <div className="hidden md:flex items-center gap-4">
-                {userRole === 'guest' ? (
-                  <button onClick={() => navigateTo('login')} className="text-sm font-medium hover:text-emerald-500 transition px-4">Log In</button>
-                ) : (
-                  <div className="flex items-center gap-4 relative">
-                    {/* PROFILE DROPDOWN TRIGGER */}
-                    <button
-                      onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                      className={`flex items-center gap-3 pr-1 pl-4 py-1 rounded-full transition border ${isDarkMode ? 'bg-white/5 hover:bg-white/10 border-white/5' : 'bg-slate-100 hover:bg-slate-200 border-slate-200'}`}
-                    >
-                      <span className="text-xs font-bold hidden sm:block mr-2">{userProfile.name}</span>
-                      <img src={userProfile.avatar} alt="Profile" className="h-8 w-8 rounded-full object-cover border border-emerald-500/50" />
-                    </button>
-
-                    {/* DROPDOWN MENU */}
-                    {isProfileDropdownOpen && (
-                      <div className={`absolute top-full right-0 mt-2 w-48 rounded-xl shadow-2xl border overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 ${isDarkMode ? 'bg-[#0a1410] border-white/10' : 'bg-white border-slate-200'}`}>
-                        <button
-                          onClick={() => {
-                            navigateTo('dashboard');
-                            setDashboardTab('profile');
-                          }}
-                          className={`w-full text-left px-4 py-3 text-sm font-medium flex items-center transition ${isDarkMode ? 'text-white hover:bg-white/10' : 'text-slate-700 hover:bg-slate-50'}`}
-                        >
-                          <User className="h-4 w-4 mr-2" /> View Profile
-                        </button>
-                        <button
-                          onClick={handleLogout}
-                          className={`w-full text-left px-4 py-3 text-sm font-medium flex items-center transition text-red-500 ${isDarkMode ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}`}
-                        >
-                          <LogOut className="h-4 w-4 mr-2" /> Log Out
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="md:hidden flex items-center">
-                {userRole !== 'guest' && (
-                  <img onClick={() => navigateTo('dashboard')} src={userProfile.avatar} alt="Profile" className="h-8 w-8 rounded-full object-cover border border-emerald-500/50 mr-3 cursor-pointer" />
-                )}
-                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
-                  {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-                </button>
-              </div>
-            </div>
-          </div>
-          {isMobileMenuOpen && (
-            <div className={`absolute top-full left-0 w-full mt-4 border rounded-2xl overflow-hidden shadow-2xl p-4 flex flex-col space-y-2 md:hidden animate-in fade-in slide-in-from-top-5 z-50 ${isDarkMode ? 'bg-[#0a1410] border-white/10' : 'bg-white border-slate-200'}`}>
-              <button onClick={() => navigateTo('landing')} className={`p-3 text-left rounded-xl font-medium ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>Home</button>
-              <button onClick={() => navigateTo('events')} className={`p-3 text-left rounded-xl font-medium ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>Events</button>
-              {userRole !== 'guest' && (
-                <button onClick={() => navigateTo('dashboard')} className={`p-3 text-left rounded-xl font-medium ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>Dashboard</button>
-              )}
-              {userRole === 'guest' ? (
-                <button onClick={() => navigateTo('login')} className={`p-3 text-left text-emerald-500 rounded-xl font-bold ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>Log In</button>
-              ) : (
-                <button onClick={handleLogout} className={`p-3 text-left text-red-500 rounded-xl font-medium ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>Log Out</button>
-              )}
-            </div>
-          )}
-        </nav>
+        <Navbar
+          theme={theme}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          navigateTo={navigateTo}
+          currentView={currentView}
+          userRole={userRole}
+          userProfile={userProfile}
+          isProfileDropdownOpen={isProfileDropdownOpen}
+          setIsProfileDropdownOpen={setIsProfileDropdownOpen}
+          setDashboardTab={setDashboardTab}
+          handleLogout={handleLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
 
         {/* MAIN CONTENT */}
         <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 w-full">
@@ -768,61 +813,50 @@ export default function GoalHubApp() {
                   <button className="text-emerald-500 text-sm font-medium flex items-center">View map <ChevronRight className="h-4 w-4 ml-1" /></button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                  {isLoadingTurfs ? (
-                    <div className="col-span-2 text-center py-12">
-                      <Loader2 className="h-12 w-12 animate-spin mx-auto text-emerald-500 mb-4" />
-                      <p className={theme.textSub}>Loading turfs...</p>
-                    </div>
-                  ) : turfs.length === 0 ? (
-                    <div className="col-span-2 text-center py-12">
-                      <p className={theme.textSub}>No turfs available at the moment.</p>
-                    </div>
-                  ) : (
-                    turfs.map(turf => (
-                      <div key={turf.id} onClick={() => addToCart(turf)} className={`${theme.card} ${theme.cardHover} group overflow-hidden relative flex flex-col`}>
-                        {/* Image Container */}
-                        <div className="h-56 relative w-full">
-                          <div className={`absolute inset-0 bg-gradient-to-b from-transparent z-10 ${isDarkMode ? 'to-black/20' : 'to-transparent'}`}></div>
-                          <img src={turf.image} alt={turf.name} className="w-full h-full object-cover transition duration-700 group-hover:scale-110" />
-                          <div className={`absolute top-6 right-6 z-20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-white/20 border-white/10 text-white' : 'bg-white/90 border-white text-slate-900'}`}>{turf.type}</div>
-                          {globalDiscount > 0 && (
-                            <div className="absolute top-6 left-6 z-20 bg-red-600 shadow-lg shadow-red-600/20 px-4 py-2 rounded-full text-xs font-bold text-white border border-red-400/20 flex items-center">
-                              <Tag className="h-3 w-3 mr-1" /> {globalDiscount}% OFF
-                            </div>
-                          )}
+                  {TURFS.map(turf => (
+                    <div key={turf.id} onClick={() => addToCart(turf)} className={`${theme.card} ${theme.cardHover} group overflow-hidden relative flex flex-col`}>
+                      {/* Image Container */}
+                      <div className="h-56 relative w-full">
+                        <div className={`absolute inset-0 bg-gradient-to-b from-transparent z-10 ${isDarkMode ? 'to-black/20' : 'to-transparent'}`}></div>
+                        <img src={turf.image} alt={turf.name} className="w-full h-full object-cover transition duration-700 group-hover:scale-110" />
+                        <div className={`absolute top-6 right-6 z-20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-white/20 border-white/10 text-white' : 'bg-white/90 border-white text-slate-900'}`}>{turf.type}</div>
+                        {globalDiscount > 0 && (
+                          <div className="absolute top-6 left-6 z-20 bg-red-600 shadow-lg shadow-red-600/20 px-4 py-2 rounded-full text-xs font-bold text-white border border-red-400/20 flex items-center">
+                            <Tag className="h-3 w-3 mr-1" /> {globalDiscount}% OFF
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Content Container */}
+                      <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className={`text-2xl md:text-3xl font-bold ${theme.text}`}>{turf.name}</h3>
+                          </div>
+                          <div className={`flex items-center text-sm mb-6 ${theme.textSub}`}><MapPin className="h-4 w-4 mr-1 text-emerald-500" /> {turf.location}</div>
                         </div>
 
-                        {/* Content Container */}
-                        <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
+                        {/* Price & Action Footer */}
+                        <div className={`flex justify-between items-center border-t pt-6 ${theme.divider}`}>
                           <div>
-                            <div className="flex justify-between items-start mb-2">
-                              <h3 className={`text-2xl md:text-3xl font-bold ${theme.text}`}>{turf.name}</h3>
-                            </div>
-                            <div className={`flex items-center text-sm mb-6 ${theme.textSub}`}><MapPin className="h-4 w-4 mr-1 text-emerald-500" /> {turf.location}</div>
-                          </div>
-
-                          {/* Price & Action Footer */}
-                          <div className={`flex justify-between items-center border-t pt-6 ${theme.divider}`}>
-                            <div>
-                              <span className={`text-xs uppercase font-bold tracking-wider ${theme.textSub}`}>Rate</span>
-                              <div className="flex items-baseline gap-2 flex-wrap">
-                                {globalDiscount > 0 && (
-                                  <span className="text-sm text-gray-400 line-through decoration-red-500 decoration-2 opacity-70">KES {turf.price.toLocaleString()}</span>
-                                )}
-                                <div className={`text-xl md:text-2xl font-bold ${theme.text}`}>
-                                  KES {getDiscountedPrice(turf.price).toLocaleString()}
-                                  <span className={`text-sm font-normal ${theme.textSub}`}>/ hr</span>
-                                </div>
+                            <span className={`text-xs uppercase font-bold tracking-wider ${theme.textSub}`}>Rate</span>
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              {globalDiscount > 0 && (
+                                <span className="text-sm text-gray-400 line-through decoration-red-500 decoration-2 opacity-70">KES {turf.price.toLocaleString()}</span>
+                              )}
+                              <div className={`text-xl md:text-2xl font-bold ${theme.text}`}>
+                                KES {getDiscountedPrice(turf.price).toLocaleString()}
+                                <span className={`text-sm font-normal ${theme.textSub}`}>/ hr</span>
                               </div>
                             </div>
-                            <button onClick={() => addToCart(turf)} className={`${theme.btnPrimary} flex items-center pl-5 pr-4 py-2 text-sm`}>
-                              Book Now <ArrowRight className="h-4 w-4 ml-2" />
-                            </button>
                           </div>
+                          <button onClick={() => addToCart(turf)} className={`${theme.btnPrimary} flex items-center pl-5 pr-4 py-2 text-sm`}>
+                            Book Now <ArrowRight className="h-4 w-4 ml-2" />
+                          </button>
                         </div>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1088,7 +1122,7 @@ export default function GoalHubApp() {
                       <h2 className="text-3xl md:text-4xl font-bold mb-1">{userRole === 'admin' ? 'Headquarters' : 'Operations'}</h2>
                       <p className={theme.textSub}>Welcome back, {userProfile.name}.</p>
                     </div>
-                    <div className={`flex flex-wrap gap-2 p-1 rounded-xl md:rounded-full border w-full md:w-auto justify-start ${isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
+                    <div className={`flex flex-wrap gap-2 p-1 rounded-xl md:rounded-full border w-full md:w-auto justify-start ${isDarkMode ? 'bg-black/40 backdrop-blur-md border-white/10' : 'bg-slate-100 border-slate-200'}`}>
                       <button onClick={() => setDashboardTab('calendar')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'calendar' ? theme.navPillActive : ''}`}>Calendar</button>
                       <button onClick={() => setDashboardTab('bookings')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'bookings' ? theme.navPillActive : ''}`}>Bookings</button>
                       <button onClick={() => setDashboardTab('events_mgmt')} className={`${theme.navPill} flex-1 md:flex-none text-center ${dashboardTab === 'events_mgmt' ? theme.navPillActive : ''}`}>Events</button>
@@ -1377,66 +1411,12 @@ export default function GoalHubApp() {
                   )}
 
                   {dashboardTab === 'notifications' && (
-                    <div className={theme.card}>
-                      <div className={`p-6 flex justify-between items-center ${theme.tableHeader}`}>
-                        <div>
-                          <h3 className={`font-bold text-lg ${theme.text}`}>Notifications</h3>
-                          <p className="text-xs">All system and booking notifications</p>
-                        </div>
-                        {notifications.filter(n => !n.read).length > 0 && (
-                          <button
-                            onClick={() => setNotifications(notifications.map(n => ({ ...n, read: true })))}
-                            className={`text-xs ${theme.textAccent} hover:underline`}
-                          >
-                            Mark all as read
-                          </button>
-                        )}
-                      </div>
-                      <div className="p-6 space-y-3">
-                        {notifications.length === 0 ? (
-                          <div className="text-center py-12">
-                            <Bell className={`h-16 w-16 mx-auto mb-4 ${theme.textSub} opacity-50`} />
-                            <p className={theme.textSub}>No notifications yet</p>
-                          </div>
-                        ) : (
-                          notifications.map(notif => (
-                            <div
-                              key={notif.id}
-                              className={`p-4 rounded-2xl border transition cursor-pointer ${notif.read
-                                ? (isDarkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100 opacity-70')
-                                : (isDarkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200')
-                                }`}
-                              onClick={() => setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n))}
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    {notif.type === 'booking' && <CalendarIcon className="h-4 w-4 text-emerald-500" />}
-                                    {notif.type === 'payment' && <DollarSign className="h-4 w-4 text-emerald-500" />}
-                                    {notif.type === 'system' && <Settings className="h-4 w-4 text-gray-500" />}
-                                    <span className={`text-xs uppercase font-bold ${theme.textSub}`}>{notif.type}</span>
-                                    {!notif.read && <span className="h-2 w-2 bg-emerald-500 rounded-full"></span>}
-                                  </div>
-                                  <p className={`${theme.text} font-medium`}>{notif.message}</p>
-                                  <p className={`text-xs ${theme.textSub} mt-2`}>
-                                    {new Date(notif.timestamp).toLocaleString()}
-                                  </p>
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNotifications(notifications.filter(n => n.id !== notif.id));
-                                  }}
-                                  className="text-gray-400 hover:text-red-500 transition"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <NotificationsPanel
+                      notifications={notifications}
+                      setNotifications={setNotifications}
+                      theme={theme}
+                      isDarkMode={isDarkMode}
+                    />
                   )}
 
                   {dashboardTab === 'profile' && (
@@ -1566,6 +1546,36 @@ export default function GoalHubApp() {
                 <div><p className={`text-xs uppercase tracking-wider font-bold mb-2 ${theme.textSub}`}>Booking Ref</p><p className="text-3xl font-mono font-bold tracking-widest">{confirmedBooking.id}</p></div>
                 <div className="bg-white p-4 rounded-2xl inline-block shadow-inner"><QrCode className="h-32 w-32 text-black" /></div>
                 <div className={`space-y-2 text-sm ${theme.textSub}`}><p>Show this QR code at the gate.</p><p>A copy has been sent to {confirmedBooking.customer}</p></div>
+
+                {/* Logic for Add to Calendar & Notify */}
+                <div className="flex gap-4 w-full">
+                  <a
+                    href={getGoogleCalendarUrl(confirmedBooking)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <CalendarIcon className="h-5 w-5" /> Calendar
+                  </a>
+                  <button
+                    onClick={() => {
+                      if (userRole !== 'guest') {
+                        setDashboardTab('notifications');
+                        navigateTo('dashboard');
+                      } else {
+                        // If guest, maybe show a toast or navigate to login? 
+                        // For now just show toast as per request implies functionality
+                        // But since we are in success view, likely navigating to dashboard is safe if they have an account
+                        navigateTo('login'); // Or dashboard if we auto-log them in? 
+                        // Let's stick to navigating to dashboard notifications if user, else just toast
+                      }
+                    }}
+                    className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white py-3 rounded-full font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Bell className="h-5 w-5" /> Notify
+                  </button>
+                </div>
+
                 <button onClick={() => navigateTo('landing')} className={theme.btnSecondary + " w-full"}>Done</button>
               </div>
             </div>
@@ -1573,45 +1583,7 @@ export default function GoalHubApp() {
         </main>
 
         {/* --- FOOTER (Responsive Grid) --- */}
-        <footer className={`${theme.footer} mt-auto`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8 text-center md:text-left">
-            <div className="col-span-1 md:col-span-2">
-              <h3 className={`text-2xl tracking-[0.15em] font-extrabold uppercase font-mono mb-4 ${theme.text}`}>GoalHub</h3>
-              <p className={`text-sm leading-relaxed max-w-sm mx-auto md:mx-0 ${theme.textSub}`}>
-                Kitengela's premier football destination. Professional grade turfs, seamless booking, and the heart of the local game.
-              </p>
-              <div className="flex space-x-4 mt-6 justify-center md:justify-start">
-                {/* Socials */}
-                <a href="#" className={`${theme.textSub} hover:text-emerald-500 transition`}><Facebook className="h-5 w-5" /></a>
-                <a href="#" className={`${theme.textSub} hover:text-emerald-500 transition`}><Twitter className="h-5 w-5" /></a>
-                <a href="#" className={`${theme.textSub} hover:text-emerald-500 transition`}><Instagram className="h-5 w-5" /></a>
-                <a href="#" className={`${theme.textSub} hover:text-emerald-500 transition`}><Linkedin className="h-5 w-5" /></a>
-              </div>
-            </div>
-
-            <div>
-              <h4 className={`font-bold mb-4 uppercase text-sm tracking-wider ${theme.text}`}>Quick Links</h4>
-              <ul className={`space-y-2 text-sm ${theme.textSub}`}>
-                <li><button onClick={() => navigateTo('landing')} className="hover:text-emerald-500 transition">Home</button></li>
-                <li><button onClick={() => navigateTo('events')} className="hover:text-emerald-500 transition">Leagues & Events</button></li>
-                <li><button onClick={() => navigateTo('login')} className="hover:text-emerald-500 transition">My Account</button></li>
-                <li><a href="#" className="hover:text-emerald-500 transition">Terms of Service</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className={`font-bold mb-4 uppercase text-sm tracking-wider ${theme.text}`}>Contact Us</h4>
-              <ul className={`space-y-3 text-sm ${theme.textSub} flex flex-col items-center md:items-start`}>
-                <li className="flex items-start justify-center md:justify-start"><MapPin className="h-4 w-4 mr-2 mt-1 text-emerald-500 flex-shrink-0" /> Namanga Road, Kitengela, Kenya</li>
-                <li className="flex items-center justify-center md:justify-start"><Phone className="h-4 w-4 mr-2 text-emerald-500" /> +254 700 000 000</li>
-                <li className="flex items-center justify-center md:justify-start"><Mail className="h-4 w-4 mr-2 text-emerald-500" /> bookings@goalhub.ke</li>
-              </ul>
-            </div>
-          </div>
-          <div className={`max-w-7xl mx-auto px-4 mt-12 pt-8 border-t text-center text-xs ${isDarkMode ? 'border-white/5 text-gray-600' : 'border-slate-200 text-slate-400'}`}>
-            &copy; 2025 GoalHub Kenya. All rights reserved.
-          </div>
-        </footer>
+        <Footer theme={theme} isDarkMode={isDarkMode} navigateTo={navigateTo} />
 
       </div> {/* End Content Wrapper */}
     </div>
