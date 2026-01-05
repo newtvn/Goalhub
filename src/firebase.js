@@ -1,15 +1,16 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 // Firebase configuration
 // TODO: Replace with your actual Firebase project credentials
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAkeKpob-TwhGhRR4fPns9T3_txB9QplxI",
+  authDomain: "goalhub-prod.firebaseapp.com",
+  projectId: "goalhub-prod",
+  storageBucket: "goalhub-prod.firebasestorage.app",
+  messagingSenderId: "294205667072",
+  appId: "1:294205667072:web:992f56b74342c2692c25e5",
+  measurementId: "G-104L8JVFEC"
 };
 
 // Initialize Firebase
@@ -28,6 +29,7 @@ export const signInWithGoogle = async () => {
         email: result.user.email,
         displayName: result.user.displayName,
         photoURL: result.user.photoURL,
+        token: await result.user.getIdToken()
       }
     };
   } catch (error) {
@@ -50,3 +52,40 @@ export const signOutUser = async () => {
   }
 };
 
+export const loginUser = async (email, password) => {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    return {
+      success: true,
+      user: {
+        uid: result.user.uid,
+        email: result.user.email,
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL,
+        token: await result.user.getIdToken()
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const registerUser = async (email, password) => {
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    return {
+      success: true,
+      user: {
+        uid: result.user.uid,
+        email: result.user.email,
+        token: await result.user.getIdToken()
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const onAuthStateChangedListener = (callback) => {
+  return auth.onAuthStateChanged(callback);
+};

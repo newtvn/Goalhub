@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr
 from uuid import UUID
 from app.database import get_db
 from app.models import User
+from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -36,9 +37,23 @@ class UserResponse(UserBase):
 
 # Get all users (admin only in production - add auth middleware)
 @router.get("/", response_model=List[UserResponse])
-async def get_users(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User))
+async def get_users(
+    skip: int = 0, 
+    limit: int = 100, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized to view users"
+        )
+    result = await db.execute(select(User).offset(skip).limit(limit))
     return result.scalars().all()
+
+@router.get("/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 # Get user by ID
 @router.get("/{user_id}", response_model=UserResponse)

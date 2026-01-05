@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import payments, turfs, bookings, users, events, notifications
+from app.routers import payments, turfs, bookings, users, events, notifications, dashboard
 
 app = FastAPI(
     title="Goalhub API",
@@ -31,6 +31,7 @@ app.include_router(bookings.router)
 app.include_router(users.router)
 app.include_router(events.router)
 app.include_router(notifications.router)
+app.include_router(dashboard.router)
 
 @app.get("/health")
 def health_check():
