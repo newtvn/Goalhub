@@ -273,6 +273,120 @@ export default function GoalHubApp() {
     }
   }, [userRole, pendingAdminNotifications]);
 
+  // Fetch turfs from backend on mount
+  useEffect(() => {
+    const fetchTurfs = async () => {
+      try {
+        setIsLoadingTurfs(true);
+        const response = await fetch('http://localhost:8000/api/turfs/');
+        if (response.ok) {
+          const data = await response.json();
+          setTurfs(data);
+        } else {
+          console.error('Failed to fetch turfs:', response.status);
+          showNotification('❌ Failed to load turfs from server');
+        }
+      } catch (error) {
+        console.error('Error fetching turfs:', error);
+        showNotification('❌ Cannot connect to backend server');
+      } finally {
+        setIsLoadingTurfs(false);
+      }
+    };
+
+    fetchTurfs();
+  }, []);
+
+  // Fetch bookings from backend for admin/manager
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (userRole !== 'admin' && userRole !== 'manager') {
+        return; // Only fetch for admin/manager
+      }
+
+      try {
+        setIsLoadingBookings(true);
+        const response = await fetch('http://localhost:8000/api/bookings/');
+        if (response.ok) {
+          const data = await response.json();
+          setBookings(data);
+        } else {
+          console.error('Failed to fetch bookings:', response.status);
+        }
+      } catch (error) {
+        console.error('Error fetching bookings:', error);
+      } finally {
+        setIsLoadingBookings(false);
+      }
+    };
+
+    fetchBookings();
+  }, [userRole]);
+
+  // Fetch Events from API
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        setIsLoadingEvents(true);
+        const response = await fetch('http://localhost:8000/api/events/');
+        if (response.ok) {
+          const data = await response.json();
+          setEventsList(data);
+        } else {
+          console.error('Failed to fetch events:', response.status);
+          // Fallback to empty if failed, or handle error
+        }
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      } finally {
+        setIsLoadingEvents(false);
+      }
+    };
+    fetchEvents();
+  }, []);
+
+  // Fetch Users (Admin only)
+  useEffect(() => {
+    if (userRole === 'admin') {
+      const fetchUsers = async () => {
+        try {
+          setIsLoadingUsers(true);
+          const response = await fetch('http://localhost:8000/api/users/');
+          if (response.ok) {
+            const data = await response.json();
+            setUsers(data);
+          }
+        } catch (error) {
+          console.error('Error fetching users:', error);
+        } finally {
+          setIsLoadingUsers(false);
+        }
+      };
+      fetchUsers();
+    }
+  }, [userRole]);
+
+  // Fetch Notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (userRole === 'guest') return;
+
+      try {
+        setIsLoadingNotifications(true);
+        const response = await fetch('http://localhost:8000/api/notifications/');
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data);
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      } finally {
+        setIsLoadingNotifications(false);
+      }
+    };
+    fetchNotifications();
+  }, [userRole]);
+
   // --- AUTHENTICATION ---
   const handleLoginSubmit = () => {
     navigateTo('processing_login');
