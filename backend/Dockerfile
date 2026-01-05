@@ -25,4 +25,5 @@ COPY . .
 EXPOSE 8000
 
 # Run app.main:app when the container launches
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Remove --reload for production and use $PORT environment variable
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
