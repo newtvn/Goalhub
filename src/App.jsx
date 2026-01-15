@@ -35,6 +35,46 @@ export default function GoalHubApp() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
 
+import React, { useState, useEffect, Suspense } from 'react';
+import {
+  monitorConnection,
+  subscribeToEvents,
+  subscribeToTurfs,
+  subscribeToExtras,
+  subscribeToSettings,
+  createTransaction,
+  pollPaymentStatus
+} from './firebase';
+import { INITIAL_EVENTS } from './data/constants';
+import bgImage from './assets/_ (51).jpeg';
+
+// Context Providers
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+
+// Components
+import Navbar from './components/layout/Navbar';
+import Footer from './components/layout/Footer';
+import Loader from './components/ui/Loader';
+
+// Pages - Lazy Loading
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const EventsPage = React.lazy(() => import('./pages/EventsPage'));
+const BookingPage = React.lazy(() => import('./pages/BookingPage'));
+const CheckoutPage = React.lazy(() => import('./pages/CheckoutPage'));
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
+const SuccessPage = React.lazy(() => import('./pages/SuccessPage'));
+const ProcessingPage = React.lazy(() => import('./pages/ProcessingPage'));
+
+// Dashboard
+const Dashboard = React.lazy(() => import('./components/dashboard/Dashboard'));
+
+// Main App Component Logic
+function GoalHubContent() {
+  const { theme, isDarkMode } = useTheme();
+  const { userRole, userProfile, authLoading } = useAuth();
+
+  // Navigation State
   const [currentView, setCurrentView] = useState('landing');
   const [userRole, setUserRole] = useState('guest'); // guest, user, manager, admin
   const [username, setUsername] = useState('');
@@ -67,7 +107,15 @@ export default function GoalHubApp() {
   }, []);
   const [editingEvent, setEditingEvent] = useState(null);
 
-  // Booking State
+  // Data State
+  // Bookings, Users, Notifications, Transactions moved to AdminDashboard
+  const [eventsList, setEventsList] = useState([]);
+  const [turfsList, setTurfsList] = useState([]);
+  const [extrasList, setExtrasList] = useState([]);
+  const [settings, setSettings] = useState({});
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+
+  // Booking Flow State
   const [selectedTurf, setSelectedTurf] = useState(null);
   const [bookingDate, setBookingDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -126,13 +174,24 @@ export default function GoalHubApp() {
   }, []);
   const [editingBooking, setEditingBooking] = useState(null);
 
-  // Reports
-  const REPORTS = [
-    { id: 1, title: "Daily Sales Report", type: "Financial", date: "Nov 20, 2025" },
-    { id: 2, title: "Weekly Occupancy Analysis", type: "Operational", date: "Nov 14 - Nov 20" },
-    { id: 3, title: "Monthly Revenue Summary", type: "Financial", date: "October 2025" },
-    { id: 4, title: "Customer Manifest", type: "User Data", date: "All Time" },
-  ];
+  // Subscriptions - Optimized (Only global data)
+  useEffect(() => {
+    const unsubEvents = subscribeToEvents((data) => setEventsList(data.length > 0 ? data : INITIAL_EVENTS));
+    const unsubTurfs = subscribeToTurfs(setTurfsList);
+    const unsubExtras = subscribeToExtras(setExtrasList);
+    const unsubSettings = subscribeToSettings((data) => {
+      setSettings(data);
+      if (data?.globalDiscount !== undefined) setGlobalDiscount(data.globalDiscount);
+    });
+    monitorConnection((status) => console.log("Connection:", status));
+
+    return () => {
+      unsubEvents();
+      unsubTurfs();
+      unsubExtras();
+      unsubSettings();
+    };
+  }, []);
 
   // --- HELPERS ---
 
@@ -193,14 +252,12 @@ export default function GoalHubApp() {
     showNotification(`Downloading ${reportTitle}.pdf...`);
   };
 
-  const formatPhoneNumber = (phone) => {
-    let cleaned = phone.replace(/[\s\-+]/g, '');
-    if (cleaned.startsWith('0')) return '254' + cleaned.substring(1);
-    if (cleaned.startsWith('254')) return cleaned;
-    return cleaned;
-  };
-
-  // --- EFFECTS ---
+  const showNotification = React.useCallback((message) => {
+    // Simple Toast implementation
+    const notification = document.createElement('div');
+    notification.className = `fixed bottom-4 right-4 text-white px-6 py-3 rounded-xl shadow-2xl transform transition-all duration-500 translate-y-10 opacity-0 z-[100] font-bold flex items-center gap-3 backdrop-blur-md ${isDarkMode ? 'bg-emerald-600/90' : 'bg-emerald-600'}`;
+    notification.innerHTML = `<span>🔔</span> ${message}`;
+    document.body.appendChild(notification);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -791,26 +848,27 @@ export default function GoalHubApp() {
     }
   };
 
-  const handleSlotClick = (turfName, time) => {
-    const existing = bookings.find(b => b.date === calendarDate && b.turf === turfName && b.time === time);
-    if (existing) {
-      setEditingBooking(existing);
-    } else {
-      setEditingBooking({
-        id: 'new',
-        turf: turfName,
-        date: calendarDate,
-        time: time,
-        duration: 1,
-        customer: 'Walk-in Guest',
-        amount: 0,
-        payment: 'Pending',
-        status: 'Pending'
-      });
+      if (success) {
+        setConfirmedBooking({
+          id: `BK-${Math.floor(Math.random() * 10000)}`, // In reality, createBooking returns this
+          customer: finalCustomer.name,
+          turf: selectedTurf.name
+        });
+        // We should ideally call createBooking here too if not handled by backend webhook
+        navigateTo('success');
+      } else {
+        showNotification("Payment failed or timed out.");
+        navigateTo('checkout');
+      }
+    } catch (e) {
+      console.error(e);
+      showNotification("Payment Error: " + e.message);
+      navigateTo('checkout');
     }
   };
 
-  // --- RENDERERS ---
+  // --- RENDER ---
+  if (isLoading) return <Loader />;
 
   if (isAuthLoading) {
     return (
@@ -1738,5 +1796,15 @@ export default function GoalHubApp() {
 
       </div> {/* End Content Wrapper */}
     </div >
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <GoalHubContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

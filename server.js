@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Middleware - Configure CORS to allow frontend
+// Middleware - Configure CORS to allow frontend (including network access)
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -30,7 +30,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all origins in development
+      callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -43,6 +43,7 @@ const corsOptions = {
 app.use(helmet({
   contentSecurityPolicy: NODE_ENV === 'production' ? undefined : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, // Allow Firebase Auth popups
 }));
 
 app.use(cors(corsOptions));
@@ -418,10 +419,11 @@ process.on('SIGTERM', () => {
   });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${NODE_ENV}`);
   console.log(`💳 M-Pesa Mode: ${MPESA_ENV}`);
+  console.log(`🌐 Network: Exposed to all interfaces`);
 });
 
 export default server;
