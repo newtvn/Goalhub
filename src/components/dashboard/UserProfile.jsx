@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Edit2 } from 'lucide-react';
-import { subscribeToBookings } from '../../firebase';
+import { subscribeToBookings } from "../../data/supabaseData";
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 

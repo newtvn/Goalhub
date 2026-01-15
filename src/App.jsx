@@ -8,7 +8,7 @@ import {
   subscribeToSettings,
   createTransaction,
   pollPaymentStatus
-} from './firebase';
+} from './data/supabaseData';
 import { INITIAL_EVENTS } from './data/constants';
 import bgImage from './assets/_ (51).jpeg';
 
@@ -63,9 +63,15 @@ function GoalHubContent() {
 
   // --- EFFECTS ---
 
-  // Initial Load simulation
+  // Initial Load & URL Sync
   useEffect(() => {
-    // If auth is done, we can stop loading after a minimal delay
+    // 1. Sync State with URL on Load
+    const path = window.location.pathname.replace('/', '');
+    if (path === 'dashboard' || path === 'booking' || path === 'events' || path === 'login') {
+      setCurrentView(path);
+    }
+
+    // 2. Stop loading when auth is ready
     if (!authLoading) {
       setTimeout(() => setIsLoading(false), 800);
     }
@@ -94,6 +100,9 @@ function GoalHubContent() {
   const navigateTo = React.useCallback((view) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setCurrentView(view);
+    // Update URL without reload
+    const url = view === 'landing' ? '/' : `/${view}`;
+    window.history.pushState({}, '', url);
   }, []);
 
   const showNotification = React.useCallback((message) => {

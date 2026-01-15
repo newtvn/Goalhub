@@ -17,7 +17,7 @@ import {
     subscribeToNotifications,
     subscribeToUsers,
     subscribeToTransactions
-} from '../../firebase';
+} from '../../data/supabaseData';
 
 // Views
 import CalendarView from './views/CalendarView';
