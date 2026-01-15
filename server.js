@@ -14,23 +14,28 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Middleware - Configure CORS to allow frontend
+// Middleware - Configure CORS to allow frontend (including network access)
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
+    // In development, allow all origins for easier testing
+    if (NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174'
     ];
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all origins in development
+      callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -43,6 +48,7 @@ const corsOptions = {
 app.use(helmet({
   contentSecurityPolicy: NODE_ENV === 'production' ? undefined : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, // Allow Firebase Auth popups
 }));
 
 app.use(cors(corsOptions));
@@ -206,7 +212,7 @@ app.post('/api/stkpush', async (req, res) => {
         PartyA: formattedPhone,
         PartyB: SHORTCODE,
         PhoneNumber: formattedPhone,
-        CallBackURL: `http://localhost:${PORT}/api/callback`, // Callback URL for payment confirmation
+        CallBackURL: `${process.env.CALLBACK_URL || `http://localhost:${PORT}`}/api/callback`, // Callback URL for payment confirmation
         AccountReference: "GoalHub",
         TransactionDesc: "Turf Booking"
     };
@@ -382,10 +388,11 @@ process.on('SIGTERM', () => {
   });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${NODE_ENV}`);
   console.log(`💳 M-Pesa Mode: ${MPESA_ENV}`);
+  console.log(`🌐 Network: Exposed to all interfaces`);
 });
 
 export default server;

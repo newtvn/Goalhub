@@ -35,6 +35,12 @@ A modern, full-stack football turf booking platform with M-Pesa payment integrat
 - **Environment Variables** - Secure credential management
 - **CORS Protection** - Cross-origin request security
 
+### ⚡ Performance Features
+- **Code Splitting** - Lazy loading for all pages to improved load times
+- **Optimized Data Fetching** - Smart subscriptions to save bandwidth and costs
+- **Image Optimization** - Next-gen WebP formats for faster rendering
+- **Memoization** - Efficient re-rendering cycles
+
 ---
 
 ## 📋 Table of Contents
@@ -137,8 +143,6 @@ MPESA_SHORTCODE=174379
 MPESA_ENV=sandbox
 ```
 
-📖 **Detailed Guide:** See [PAYMENT_FLOW_DOCUMENTATION.md](./PAYMENT_FLOW_DOCUMENTATION.md)
-
 ### 4. Additional Configuration
 
 ```env
@@ -176,16 +180,19 @@ npm run preview
 
 ---
 
-## 📁 Project Structure
-
-```
 GOALHUB/
 ├── src/
-│   ├── App.jsx              # Main React application
-│   ├── firebase.js          # Firebase authentication
+│   ├── App.jsx              # Main React application (Lazy Loaded)
+│   ├── firebase.js          # Firebase authentication & Firestore
 │   ├── main.jsx             # App entry point
 │   ├── index.css            # Global styles
-│   └── assets/              # Images and static assets
+│   ├── assets/              # Optimized static assets
+│   ├── components/
+│   │   ├── dashboard/       # Admin & User Dashboard Views
+│   │   ├── layout/          # Navbar, Footer
+│   │   ├── modals/          # Application Modals
+│   │   └── ui/              # Reusable UI components
+│   └── pages/               # Application Pages (Lazy Loaded)
 ├── server.js                # Express backend server
 ├── package.json             # Dependencies
 ├── vite.config.js           # Vite configuration
@@ -194,11 +201,7 @@ GOALHUB/
 ├── env.example              # Environment template
 ├── .gitignore               # Git ignore rules
 ├── README.md                # This file
-└── Documentation/
-    ├── FIREBASE_SETUP_GUIDE.md
-    ├── PAYMENT_FLOW_DOCUMENTATION.md
-    ├── TESTING_GUIDE.md
-    └── PRODUCTION_READY.md
+└── FIREBASE_SETUP_GUIDE.md  # Firebase setup instructions
 ```
 
 ---
@@ -405,10 +408,6 @@ Access to fetch blocked by CORS policy
 ## 📚 Additional Documentation
 
 - [Firebase Setup Guide](./FIREBASE_SETUP_GUIDE.md) - Complete Firebase configuration
-- [Payment Flow Documentation](./PAYMENT_FLOW_DOCUMENTATION.md) - M-Pesa integration details
-- [Testing Guide](./TESTING_GUIDE.md) - How to test the application
-- [Production Deployment](./PRODUCTION_READY.md) - Production deployment guide
-- [Google Auth Summary](./GOOGLE_AUTH_SUMMARY.md) - Google authentication details
 
 ---
 
