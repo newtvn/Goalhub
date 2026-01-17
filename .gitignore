@@ -28,3 +28,14 @@ firebase-service-account.json
 *.njsproj
 *.sln
 *.sw?
+
+# Python environments
+__pycache__/
+*.pyc
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.pytest_cache/

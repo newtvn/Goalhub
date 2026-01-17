@@ -10,6 +10,8 @@ import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
+import { query as dbQuery } from './db.js';
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -118,9 +120,6 @@ const getAccessToken = async () => {
   }
 };
 
-// In-memory storage for payment tracking (In production, use a database like PostgreSQL or MongoDB)
-const pendingPayments = new Map();
-
 // Logger helper
 const logger = {
   info: (message, data = {}) => {
@@ -209,14 +208,16 @@ app.post('/api/stkpush', async (req, res) => {
         CustomerMessage: "Success. Request accepted for processing"
       };
 
-      // Mock tracking
-      pendingPayments.set(mockResponse.CheckoutRequestID, {
-        phone: formattedPhone,
-        amount: amount,
-        status: 'pending',
-        timestamp: Date.now(),
-        createdAt: new Date().toISOString()
-      });
+      // Mock tracking - save to database
+      try {
+        await dbQuery(
+          `INSERT INTO payments (id, checkout_request_id, phone, amount, status, created_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+          [mockResponse.CheckoutRequestID, formattedPhone, amount, 'pending']
+        );
+      } catch (dbError) {
+        logger.error('Failed to save simulated payment to database', dbError);
+      }
 
       return res.json(mockResponse);
     }
@@ -263,16 +264,20 @@ app.post('/api/stkpush', async (req, res) => {
       responseCode: response.data.ResponseCode
     });
 
-    // Store the CheckoutRequestID for tracking
+    // Store the CheckoutRequestID for tracking in database
     if (response.data.CheckoutRequestID) {
-      pendingPayments.set(response.data.CheckoutRequestID, {
-        phone: formattedPhone,
-        amount: amount,
-        status: 'pending',
-        timestamp: Date.now(),
-        createdAt: new Date().toISOString()
-      });
-      logger.info('Payment tracking initialized', { checkoutRequestId: response.data.CheckoutRequestID });
+      try {
+        await dbQuery(
+          `INSERT INTO payments (id, checkout_request_id, phone, amount, status, created_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+          [response.data.CheckoutRequestID, formattedPhone, amount, 'pending']
+        );
+        logger.info('Payment tracking initialized in database', {
+          checkoutRequestId: response.data.CheckoutRequestID
+        });
+      } catch (dbError) {
+        logger.error('Failed to save payment to database', dbError);
+      }
     }
 
     res.json(response.data);
@@ -296,7 +301,7 @@ app.post('/api/stkpush', async (req, res) => {
 
 // --- ROUTE: M-PESA CALLBACK ---
 // This endpoint receives payment confirmation from Safaricom
-app.post('/api/callback', (req, res) => {
+app.post('/api/callback', async (req, res) => {
   logger.info('M-Pesa Callback Received', { body: req.body });
 
   try {
@@ -309,25 +314,37 @@ app.post('/api/callback', (req, res) => {
 
     const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = Body.stkCallback;
 
-    if (pendingPayments.has(CheckoutRequestID)) {
-      const payment = pendingPayments.get(CheckoutRequestID);
-
+    // Update payment in database
+    try {
       if (ResultCode === 0) {
-        // Payment successful
-        payment.status = 'completed';
-        payment.completedAt = new Date().toISOString();
-        payment.metadata = CallbackMetadata;
+        const receiptNumber = CallbackMetadata?.Item?.find(
+          item => item.Name === 'MpesaReceiptNumber'
+        )?.Value;
+
+        await dbQuery(
+          `UPDATE payments
+           SET status = $1,
+               completed_at = NOW(),
+               reference = $2,
+               callback_metadata = $3
+           WHERE checkout_request_id = $4`,
+          ['completed', receiptNumber, JSON.stringify(CallbackMetadata), CheckoutRequestID]
+        );
 
         logger.success('Payment Completed', {
           checkoutRequestId: CheckoutRequestID,
-          phone: payment.phone,
-          amount: payment.amount
+          receipt: receiptNumber
         });
       } else {
-        // Payment failed or cancelled
-        payment.status = 'failed';
-        payment.failedAt = new Date().toISOString();
-        payment.failureReason = ResultDesc;
+        await dbQuery(
+          `UPDATE payments
+           SET status = $1,
+               failure_reason = $2,
+               callback_metadata = $3,
+               completed_at = NOW()
+           WHERE checkout_request_id = $4`,
+          ['failed', ResultDesc, JSON.stringify(CallbackMetadata), CheckoutRequestID]
+        );
 
         logger.warn('Payment Failed', {
           checkoutRequestId: CheckoutRequestID,
@@ -335,10 +352,8 @@ app.post('/api/callback', (req, res) => {
           reason: ResultDesc
         });
       }
-
-      pendingPayments.set(CheckoutRequestID, payment);
-    } else {
-      logger.warn('Received callback for unknown CheckoutRequestID', { CheckoutRequestID });
+    } catch (dbError) {
+      logger.error('Failed to update payment in database', dbError);
     }
 
     // Always respond with 200 to acknowledge receipt
@@ -351,18 +366,33 @@ app.post('/api/callback', (req, res) => {
 
 // --- ROUTE: CHECK PAYMENT STATUS ---
 // Frontend can poll this endpoint to check if payment is complete
-app.get('/api/payment-status/:checkoutRequestId', (req, res) => {
+app.get('/api/payment-status/:checkoutRequestId', async (req, res) => {
   const { checkoutRequestId } = req.params;
 
-  if (pendingPayments.has(checkoutRequestId)) {
-    const payment = pendingPayments.get(checkoutRequestId);
+  try {
+    const result = await dbQuery(
+      `SELECT status, amount, phone, reference, created_at, completed_at
+       FROM payments
+       WHERE checkout_request_id = $1`,
+      [checkoutRequestId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    const payment = result.rows[0];
     res.json({
       status: payment.status,
-      amount: payment.amount,
-      phone: payment.phone
+      amount: parseFloat(payment.amount),
+      phone: payment.phone,
+      reference: payment.reference,
+      createdAt: payment.created_at,
+      completedAt: payment.completed_at
     });
-  } else {
-    res.status(404).json({ error: 'Payment not found' });
+  } catch (dbError) {
+    logger.error('Failed to retrieve payment status', dbError);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
@@ -377,7 +407,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const healthcheck = {
     status: 'OK',
     timestamp: new Date().toISOString(),
@@ -385,9 +415,16 @@ app.get('/api/health', (req, res) => {
     environment: NODE_ENV,
     services: {
       mpesa: MPESA_ENV,
-      paymentsTracking: pendingPayments.size
+      paymentsTracking: 0
     }
   };
+
+  try {
+    const result = await dbQuery('SELECT COUNT(*) FROM payments WHERE status = $1', ['pending']);
+    healthcheck.services.paymentsTracking = parseInt(result.rows[0].count);
+  } catch (dbError) {
+    healthcheck.services.paymentsTracking = 'error';
+  }
 
   res.status(200).json(healthcheck);
 });
