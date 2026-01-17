@@ -10,6 +10,38 @@ import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
+// ===============================================================================
+// ⚠️  DEPRECATION NOTICE ⚠️
+// ===============================================================================
+// This Node.js payment server is DEPRECATED and will be removed in a future version.
+// All payment endpoints have been migrated to the FastAPI backend (port 8000).
+//
+// If you are seeing this message, please update your application to use:
+//   - FastAPI Backend: http://localhost:8000/api/stkpush
+//
+// Migration Timeline: This server will be removed on: [2026-02-17]
+//
+// For migration instructions, see: PAYMENT_MIGRATION.md
+// ===============================================================================
+
+console.warn(`
+⚠️  ⚠️  ⚠️  DEPRECATION NOTICE ⚠️  ⚠️  ⚠️
+
+This Node.js payment server is DEPRECATED and will be removed in a future version.
+All payment endpoints have been migrated to the FastAPI backend (port 8000).
+
+If you are seeing this message, please update your application to use:
+  - FastAPI Backend: http://localhost:8000/api/stkpush
+  - M-Pesa Callback: http://localhost:8000/api/callback
+  - Payment Status: http://localhost:8000/api/payment-status/:id
+
+This server will be removed on: 2026-02-17
+
+For migration instructions, see: PAYMENT_MIGRATION.md
+
+⚠️  ⚠️  ⚠️  ⚠️  ⚠️  ⚠️  ⚠️  ⚠️  ⚠️  ⚠️
+`);
+
 import { query as dbQuery } from './db.js';
 
 const app = express();

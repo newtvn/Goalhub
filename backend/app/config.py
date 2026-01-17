@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     MPESA_PASSKEY: str
     MPESA_SHORTCODE: str
     MPESA_ENV: str = "sandbox"
-    
+    CALLBACK_URL: str = None  # Optional, defaults to localhost if not set
+
     class Config:
         env_file = ".env"
 

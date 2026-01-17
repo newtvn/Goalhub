@@ -123,6 +123,7 @@ function GoalHubContent() {
   const [cartExtras, setCartExtras] = useState([]);
   const [customerDetails, setCustomerDetails] = useState({ name: '', phone: '', email: '', note: '' });
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [currentCheckoutRequestId, setCurrentCheckoutRequestId] = useState(null);
 
   // Admin/Manager Data
   const [dashboardTab, setDashboardTab] = useState('calendar');
@@ -607,17 +608,47 @@ function GoalHubContent() {
   };
 
   // --- M-PESA PAYMENT INTEGRATION ---
-  // --- M-PESA PAYMENT INTEGRATION (MOCKED) ---
   const processPayment = async () => {
     navigateTo('processing_payment');
 
     const custName = userRole === 'user' ? userProfile.name : customerDetails.name;
+    const phone = customerDetails.phone || userProfile.phone;
+    const amount = calculateTotal();
 
-    // Simulate API delay
-    setTimeout(() => {
-      showNotification("✅ Payment successful! (Mocked)");
-      completeBooking(custName);
-    }, 3000);
+    try {
+      // Call real STK Push endpoint
+      const response = await fetch('http://localhost:8000/api/stkpush', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone, amount })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Payment initiation failed');
+      }
+
+      const data = await response.json();
+
+      // Check if STK Push was successful
+      if (data.ResponseCode === "0") {
+        const checkoutRequestId = data.CheckoutRequestID;
+        setCurrentCheckoutRequestId(checkoutRequestId);  // Store for later
+        showNotification("📱 Check your phone for M-Pesa prompt");
+
+        // Start polling for payment status
+        pollPaymentStatus(checkoutRequestId, custName);
+      } else {
+        showNotification(`❌ Payment failed: ${data.ResponseDescription}`);
+        setTimeout(() => navigateTo('checkout'), 3000);
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      showNotification(`❌ Payment error: ${error.message}`);
+      setTimeout(() => navigateTo('checkout'), 3000);
+    }
   };
 
   // Poll payment status until completed or timeout
@@ -631,7 +662,7 @@ function GoalHubContent() {
     }
 
     try {
-      const response = await fetch(`/api/payment-status/${requestId}`);
+      const response = await fetch(`http://localhost:8000/api/payment-status/${requestId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -672,7 +703,12 @@ function GoalHubContent() {
     };
 
     try {
-      const response = await fetch('http://localhost:8000/api/bookings/', {
+      // Include checkout request ID if available
+      const url = currentCheckoutRequestId
+        ? `http://localhost:8000/api/bookings/?checkout_request_id=${currentCheckoutRequestId}`
+        : 'http://localhost:8000/api/bookings/';
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

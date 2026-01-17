@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import payments, turfs, bookings, users, events, notifications, dashboard
+from app.middleware.rate_limit import RateLimitMiddleware
 
 app = FastAPI(
     title="Goalhub API",
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add rate limiting for payment endpoints
+app.add_middleware(RateLimitMiddleware, max_requests=10, window_seconds=900)
 
 app.include_router(payments.router)
 app.include_router(turfs.router)

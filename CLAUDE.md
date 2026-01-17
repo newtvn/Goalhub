@@ -4,31 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoalHub is a football turf booking platform with M-Pesa payment integration and Firebase/Google Authentication. The project is in a transitional state with two backend implementations:
+GoalHub is a football turf booking platform with M-Pesa payment integration and Firebase/Google Authentication. The backend is built with FastAPI and uses PostgreSQL for data persistence.
 
-1. **Legacy Backend** (Node.js/Express): Current production backend in `server.js`
-2. **New Backend** (FastAPI/Python): Being developed in `backend/` directory
+**Note**: A deprecated Node.js backend (`server.js`) exists in the repository but is no longer used. All payment processing and API endpoints have been migrated to FastAPI. See `PAYMENT_MIGRATION.md` for details.
 
 ## Architecture
 
-### Dual Backend System
+### Backend (FastAPI/Python)
 
-The codebase currently maintains two separate backends:
+Single backend service handling all API endpoints including:
+- **M-Pesa Payment Processing**: STK Push initiation, callback handling, and payment status tracking
+- **Turf Bookings**: Booking management with payment verification
+- **User Management**: User profiles and authentication (integrates with Firebase Auth)
+- **Events & Notifications**: Event management and user notifications
+- **Dashboard**: Admin/manager analytics and data views
 
-- **Node.js Backend** (`server.js`): Express server handling M-Pesa STK Push payments, currently active
-- **FastAPI Backend** (`backend/`): PostgreSQL-backed REST API with SQLAlchemy models, Alembic migrations, and modular routers for turfs, bookings, users, events, notifications, and dashboard
+**Key Features**:
+- PostgreSQL database with async SQLAlchemy ORM
+- Alembic migrations for schema management
+- Rate limiting for payment endpoints (10 requests per 15 minutes)
+- Enhanced phone number validation and normalization
+- Sandbox simulation mode for M-Pesa development
+- Structured logging for payment events
+- Payment-booking integration with foreign key relationships
 
-When working on the backend, clarify which implementation the user is referring to.
+**Endpoints**:
+- `POST /api/stkpush` - Initiate M-Pesa payment
+- `POST /api/callback` - Receive M-Pesa callback
+- `GET /api/payment-status/{id}` - Check payment status
+- `POST /api/bookings/` - Create booking (with optional payment verification)
+- Additional endpoints for turfs, users, events, notifications, and dashboard
 
 ### Frontend Architecture
 
 React (Vite) application using:
-- **Auth**: Firebase (Firestore + Google Auth)
+- **Auth**: Firebase Authentication (Google Sign-In)
+- **Payment**: FastAPI backend (M-Pesa integration on port 8000)
+- **Data**: PostgreSQL via FastAPI endpoints (Supabase hosted)
 - **State Management**: Props and lifting state (no Context yet, but planned per PROJECT_STATUS.md)
 - **Routing**: Currently in a monolithic `App.jsx` with view components
 - **UI**: TailwindCSS with Lucide icons
-
-The frontend connects to the Node.js backend for payments and Firebase for data/auth.
 
 ## Development Commands
 
@@ -41,12 +56,7 @@ npm run preview      # Preview production build
 npm run lint         # Run ESLint
 ```
 
-### Legacy Backend (Node.js)
-```bash
-node server.js       # Start on port 5001 (or $PORT)
-```
-
-### New Backend (FastAPI)
+### Backend (FastAPI)
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -63,10 +73,12 @@ uvicorn app.main:app --reload --port 8000
 docker-compose up --build
 ```
 
+**Note**: The deprecated Node.js server (`node server.js`) is no longer needed and will be removed in a future update.
+
 ## Environment Configuration
 
 ### Frontend (.env at root)
-```
+```bash
 VITE_FIREBASE_API_KEY=
 VITE_FIREBASE_AUTH_DOMAIN=
 VITE_FIREBASE_PROJECT_ID=
@@ -75,34 +87,8 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 ```
 
-### Node.js Backend (.env at root)
-```
-# Application
-NODE_ENV=development
-PORT=5001
-
-# Supabase Configuration
-SUPABASE_PASSWORD=your_supabase_password
-
-# Firebase Configuration (for frontend)
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
-
-# M-Pesa Configuration
-MPESA_CONSUMER_KEY=
-MPESA_CONSUMER_SECRET=
-MPESA_PASSKEY=
-MPESA_SHORTCODE=
-MPESA_ENV=sandbox          # or 'production'
-CALLBACK_URL=              # Public HTTPS URL for M-Pesa callbacks
-```
-
-### FastAPI Backend (backend/.env)
-```
+### Backend (backend/.env)
+```bash
 # Database Configuration (Supabase PostgreSQL with connection pooler)
 DATABASE_URL=postgresql+asyncpg://postgres.ujivlrfxqvktpgncocrv:[password]@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
 
@@ -111,40 +97,63 @@ NODE_ENV=development
 PORT=8000
 
 # M-Pesa Configuration
-MPESA_CONSUMER_KEY=
-MPESA_CONSUMER_SECRET=
-MPESA_PASSKEY=
-MPESA_SHORTCODE=
-MPESA_ENV=sandbox
+MPESA_CONSUMER_KEY=your_consumer_key
+MPESA_CONSUMER_SECRET=your_consumer_secret
+MPESA_PASSKEY=bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919
+MPESA_SHORTCODE=174379
+MPESA_ENV=sandbox          # or 'production'
+
+# M-Pesa Callback URL (optional, defaults to localhost if not set)
+# For production, set to your public HTTPS endpoint
+# For development, use ngrok or similar tunnel service
+CALLBACK_URL=              # Example: https://your-domain.com/api/callback
 ```
 
 ## Key Technical Details
 
-### M-Pesa Integration (Node.js Backend)
+### M-Pesa Integration (FastAPI Backend)
 
-The `server.js` handles M-Pesa STK Push:
-- Includes simulation fallback when auth fails in sandbox mode (see `SIMULATED_TOKEN_AUTH_FAILED`)
-- In-memory payment tracking using `Map()` (production should use a database)
-- Rate limiting: 10 payment requests per 15 minutes
-- Endpoints: `/api/stkpush`, `/api/callback`, `/api/payment-status/:checkoutRequestId`
+The FastAPI backend (`backend/app/routers/payments.py` and `backend/app/services/mpesa.py`) handles M-Pesa STK Push:
+
+**Features**:
+- PostgreSQL payment tracking with full transaction history
+- Rate limiting: 10 payment requests per 15 minutes (configurable in `app/middleware/rate_limit.py`)
+- Enhanced phone number validation and automatic normalization (Kenyan numbers)
+- Sandbox simulation fallback when auth fails (see `SIMULATED_TOKEN_AUTH_FAILED` in `mpesa.py`)
+- Configurable callback URL via `CALLBACK_URL` environment variable
+- Structured logging for all payment events (search logs for "💳" emoji)
+- Payment-booking integration with foreign key relationships
+
+**Endpoints**:
+- `POST /api/stkpush` - Initiate M-Pesa STK Push (validates phone & amount)
+- `POST /api/callback` - Receive M-Pesa callback (updates payment status)
+- `GET /api/payment-status/{checkout_request_id}` - Check payment status
+
+**Implementation Files**:
+- `backend/app/routers/payments.py` - Payment API endpoints
+- `backend/app/services/mpesa.py` - M-Pesa service layer
+- `backend/app/schemas/booking.py` - Payment request/response schemas with validators
+- `backend/app/middleware/rate_limit.py` - Rate limiting middleware
+- `backend/app/utils/logger.py` - Structured logging
 
 ### Firebase Configuration
 
 **IMPORTANT**: `src/firebase.js` contains hardcoded Firebase credentials (lines 7-14). This is intentional for the production deployment but should be migrated to environment variables for security best practices.
 
-### Database (FastAPI Backend)
+### Database (PostgreSQL via Supabase)
 
 - SQLAlchemy with async support (`asyncpg` driver)
 - Alembic for migrations in `backend/alembic/versions/`
 - Models: User, Turf, Booking, Payment, Event, Notification
 - Database session dependency: `get_db()` in `app/database.py`
+- Payment-Booking relationship: Bookings have optional `payment_id` foreign key
 
 ### Frontend Data Flow
 
-- Firebase Firestore for real-time data (bookings, turfs, events)
-- Firebase Auth for user authentication
-- Axios calls to Node.js backend for M-Pesa payments
-- Vite proxy: `/api/*` → `http://localhost:5001`
+- Firebase Auth for user authentication (Google Sign-In)
+- FastAPI backend (port 8000) for M-Pesa payments and booking creation
+- PostgreSQL via FastAPI for all data (turfs, bookings, payments, events)
+- Payment flow: Frontend → FastAPI STK Push → M-Pesa → FastAPI Callback → Booking Creation
 
 ## Code Patterns
 
@@ -174,38 +183,54 @@ src/
 The project is actively being refactored:
 - State management is planned to move from prop-drilling to React Context
 - Large views in `App.jsx` should be extracted to `src/pages/`
-- The codebase is moving toward the FastAPI backend but Node.js is still in use
+- ✅ **Payment migration complete**: All M-Pesa payment processing has been migrated from Node.js to FastAPI
 
 When making changes, be aware that:
-- The Node.js backend is production-active
-- The FastAPI backend is under development
-- Frontend still connects to Firebase + Node.js backend
+- The FastAPI backend is the active production backend
+- Frontend connects to FastAPI (port 8000) for all API calls and Firebase for authentication
+- A deprecated Node.js backend (`server.js`) exists but should not be used
 
 ## Security Considerations
 
-- Firestore rules need production hardening (currently may be in test mode)
-- M-Pesa simulation logic (`SIMULATED_TOKEN_AUTH_FAILED`) should only run in development
-- Node.js backend uses Helmet and rate limiting
-- CORS is restricted to localhost origins (update for production)
-- Backend validates phone numbers and amounts before M-Pesa calls
+- **M-Pesa**: Simulation logic (`SIMULATED_TOKEN_AUTH_FAILED`) should only run in sandbox mode
+- **Rate Limiting**: Payment endpoints limited to 10 requests per 15 minutes per IP
+- **Phone Validation**: Pydantic validators ensure proper phone number format before API calls
+- **Amount Validation**: Payment amounts restricted to 1-300,000 KES range
+- **Payment Verification**: Bookings require completed payment confirmation
+- **CORS**: Restricted to localhost origins in development (update for production)
+- **Callback Security**: Ensure `CALLBACK_URL` is HTTPS in production
+- **Firebase**: Firestore rules need production hardening (currently may be in test mode)
+- **Environment Variables**: Never commit `.env` files with real credentials
 
 ## Deployment
 
 ### Frontend
-- Build: `npm run build` (outputs to `dist/`)
-- Deploy `dist/` to Vercel/Netlify
+```bash
+npm run build  # outputs to dist/
+```
+- Deploy `dist/` to Vercel/Netlify/similar
 - Configure `VITE_*` environment variables in hosting dashboard
+- Update API endpoint URLs if not using same domain
 
-### Node.js Backend
-- Deploy root directory with `node server.js` start command
-- Set all M-Pesa environment variables
+### Backend (FastAPI)
+```bash
+cd backend
+alembic upgrade head  # Run database migrations
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+**Environment Configuration**:
+- Set all M-Pesa environment variables (see Backend .env section above)
 - Update `CALLBACK_URL` to public HTTPS endpoint
+- Configure PostgreSQL `DATABASE_URL` (Supabase connection string)
+- Set `MPESA_ENV=production` for production deployment
 
-### FastAPI Backend
-- Deploy `backend/` directory
-- Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Run migrations: `alembic upgrade head`
-- Configure PostgreSQL database URL
+**Platform-Specific**:
+- **Render/Railway**: Deploy `backend/` directory, set start command above
+- **Docker**: Use `docker-compose.yml` to run PostgreSQL + FastAPI together
+- **AWS/GCP**: Deploy as containerized app or use serverless options
 
-### Docker
-Use `docker-compose.yml` to run PostgreSQL + FastAPI backend together.
+**Post-Deployment**:
+- Update M-Pesa callback URL in Safaricom Developer Portal
+- Test payment flow end-to-end with real M-Pesa credentials
+- Monitor logs for payment events (search for "💳" emoji)
