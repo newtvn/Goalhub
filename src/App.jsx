@@ -47,6 +47,7 @@ import {
 } from './firebase';
 import { INITIAL_EVENTS } from './data/constants';
 import bgImage from './assets/_ (51).jpeg';
+import { buildApiUrl, API_ENDPOINTS } from './config/api';
 
 // Context Providers
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -340,7 +341,7 @@ function GoalHubContent() {
     const fetchTurfs = async () => {
       try {
         setIsLoadingTurfs(true);
-        const response = await fetch('http://localhost:8000/api/turfs/');
+        const response = await fetch(buildApiUrl(API_ENDPOINTS.TURFS));
         if (response.ok) {
           const data = await response.json();
           setTurfs(data);
@@ -371,7 +372,7 @@ function GoalHubContent() {
 
       try {
         setIsLoadingBookings(true);
-        const response = await fetch('http://localhost:8000/api/bookings/', {
+        const response = await fetch(buildApiUrl(API_ENDPOINTS.BOOKINGS), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -397,7 +398,7 @@ function GoalHubContent() {
     const fetchEvents = async () => {
       try {
         setIsLoadingEvents(true);
-        const response = await fetch('http://localhost:8000/api/events/');
+        const response = await fetch(buildApiUrl(API_ENDPOINTS.EVENTS));
         if (response.ok) {
           const data = await response.json();
           setEventsList(data);
@@ -420,7 +421,7 @@ function GoalHubContent() {
       const fetchUsers = async () => {
         try {
           setIsLoadingUsers(true);
-          const response = await fetch('http://localhost:8000/api/users/');
+          const response = await fetch(buildApiUrl(API_ENDPOINTS.USERS));
           if (response.ok) {
             const data = await response.json();
             setUsers(data);
@@ -442,7 +443,7 @@ function GoalHubContent() {
 
       try {
         setIsLoadingNotifications(true);
-        const response = await fetch('http://localhost:8000/api/notifications/');
+        const response = await fetch(buildApiUrl(API_ENDPOINTS.NOTIFICATIONS));
         if (response.ok) {
           const data = await response.json();
           setNotifications(data);
@@ -462,7 +463,7 @@ function GoalHubContent() {
           const token = userProfile.token;
           if (!token) return;
 
-          const response = await fetch('http://localhost:8000/api/dashboard/stats', {
+          const response = await fetch(buildApiUrl(API_ENDPOINTS.DASHBOARD_STATS), {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (response.ok) {
@@ -471,7 +472,7 @@ function GoalHubContent() {
           }
 
           // Fetch Chart Data
-          const chartResponse = await fetch('http://localhost:8000/api/dashboard/chart-data', {
+          const chartResponse = await fetch(buildApiUrl(API_ENDPOINTS.DASHBOARD_CHART_DATA), {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (chartResponse.ok) {
@@ -514,7 +515,7 @@ function GoalHubContent() {
 
   const syncUserWithBackend = async (firebaseUser, token) => {
     try {
-      const response = await fetch('http://localhost:8000/api/users/me', {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.USERS_ME), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -617,7 +618,7 @@ function GoalHubContent() {
 
     try {
       // Call real STK Push endpoint
-      const response = await fetch('http://localhost:8000/api/stkpush', {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.STK_PUSH), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -662,7 +663,7 @@ function GoalHubContent() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/payment-status/${requestId}`);
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.PAYMENT_STATUS(requestId)));
 
       if (response.ok) {
         const data = await response.json();
@@ -705,8 +706,8 @@ function GoalHubContent() {
     try {
       // Include checkout request ID if available
       const url = currentCheckoutRequestId
-        ? `http://localhost:8000/api/bookings/?checkout_request_id=${currentCheckoutRequestId}`
-        : 'http://localhost:8000/api/bookings/';
+        ? buildApiUrl(API_ENDPOINTS.BOOKINGS_WITH_PAYMENT(currentCheckoutRequestId))
+        : buildApiUrl(API_ENDPOINTS.BOOKINGS);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -749,7 +750,7 @@ function GoalHubContent() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userProfile.id}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.USER_BY_ID(userProfile.id)), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -857,7 +858,7 @@ function GoalHubContent() {
     setEditingBooking(null); // Close immediately
 
     try {
-      const response = await fetch(`http://localhost:8000/api/bookings/${updated.id}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.BOOKING_BY_ID(updated.id)), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

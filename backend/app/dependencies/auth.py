@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
+from app.config import settings
 import os
 import json
 
 # Initialize HTTP Bearer security scheme
 security = HTTPBearer()
 
-# Variable to track if Firebase Admin is legally initialized
+# Variable to track if Firebase Admin is initialized
 firebase_app = None
 
 def get_firebase_app():
@@ -20,21 +21,45 @@ def get_firebase_app():
     if firebase_app:
         return firebase_app
 
-    # Path to service account key
-    cred_path = "firebase-service-account.json"
-    
     try:
-        if os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
+        # Option 1: Use individual environment variables
+        if settings.FIREBASE_PRIVATE_KEY and settings.FIREBASE_PROJECT_ID:
+            cred_dict = {
+                "type": "service_account",
+                "project_id": settings.FIREBASE_PROJECT_ID,
+                "private_key": settings.FIREBASE_PRIVATE_KEY.replace('\\n', '\n'),
+                "client_email": settings.FIREBASE_CLIENT_EMAIL,
+            }
+            cred = credentials.Certificate(cred_dict)
             firebase_app = firebase_admin.initialize_app(cred)
-            print(f"✅ Firebase Admin initialized with {cred_path}")
+            print("✅ Firebase Admin initialized with environment variables")
+
+        # Option 2: Use service account file
+        elif settings.FIREBASE_SERVICE_ACCOUNT_PATH and os.path.exists(settings.FIREBASE_SERVICE_ACCOUNT_PATH):
+            cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_PATH)
+            firebase_app = firebase_admin.initialize_app(cred)
+            print(f"✅ Firebase Admin initialized with {settings.FIREBASE_SERVICE_ACCOUNT_PATH}")
+
+        # Fallback: Mock mode (ONLY in development)
         else:
-            print("⚠️ Firebase Service Account Key not found. Running in MOCK AUTH mode.")
+            if settings.NODE_ENV == "production":
+                raise RuntimeError(
+                    "❌ Firebase credentials required in production. "
+                    "Set FIREBASE_PRIVATE_KEY, FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL "
+                    "or provide FIREBASE_SERVICE_ACCOUNT_PATH"
+                )
+            print("⚠️ Firebase Service Account not configured. Running in MOCK AUTH mode (development only).")
             firebase_app = "MOCK_MODE"
+
     except ValueError:
         # App already initialized
         firebase_app = firebase_admin.get_app()
-    
+    except Exception as e:
+        if settings.NODE_ENV == "production":
+            raise RuntimeError(f"❌ Failed to initialize Firebase in production: {str(e)}")
+        print(f"⚠️ Firebase initialization failed, falling back to MOCK MODE: {str(e)}")
+        firebase_app = "MOCK_MODE"
+
     return firebase_app
 
 async def get_current_user(

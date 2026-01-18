@@ -22,11 +22,17 @@ async def get_access_token() -> str:
     
     headers = {"Authorization": f"Basic {encoded_auth}"}
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(api_url, headers=headers)
             response.raise_for_status()
             return response.json()["access_token"]
+        except httpx.TimeoutException:
+            print("M-Pesa Token Request Timeout")
+            if settings.MPESA_ENV == "sandbox":
+                print("⚠️ Sandbox timeout - returning simulation token")
+                return "SIMULATED_TOKEN_AUTH_FAILED"
+            raise HTTPException(status_code=504, detail="M-Pesa authentication timeout")
         except httpx.HTTPError as e:
             print(f"M-Pesa Token Error: {e}")
 
@@ -84,15 +90,18 @@ async def initiate_stk_push(phone: str, amount: int) -> dict:
         
     headers = {"Authorization": f"Bearer {access_token}"}
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             response = await client.post(api_url, json=payload, headers=headers)
             response_data = response.json()
-            
+
             # Log response (in a real app use a logger)
             print(f"STK Push Response: {response_data}")
-            
+
             return response_data
+        except httpx.TimeoutException:
+            print("STK Push Request Timeout")
+            raise HTTPException(status_code=504, detail="M-Pesa STK Push request timeout")
         except httpx.HTTPError as e:
             print(f"STK Push Error: {e}")
             raise HTTPException(status_code=502, detail="Failed to initiate STK Push")
