@@ -28,52 +28,38 @@ import { getGoogleCalendarUrl } from './utils/calendarUtils';
 
 // --- THEME DEFINITIONS ---
 
+// Stub subscription functions for Firebase data (to be replaced with proper API calls)
+const subscribeToEvents = (callback) => {
+  callback(INITIAL_EVENTS);
+  return () => {}; // unsubscribe function
+};
+
+const subscribeToTurfs = (callback) => {
+  callback(TURFS);
+  return () => {};
+};
+
+const subscribeToExtras = (callback) => {
+  callback(EXTRAS);
+  return () => {};
+};
+
+const subscribeToSettings = (callback) => {
+  callback({ globalDiscount: 0 });
+  return () => {};
+};
+
+const monitorConnection = (callback) => {
+  callback('connected');
+  return () => {};
+};
+
 // --- COMPONENT: MAIN APP ---
 
-export default function GoalHubApp() {
+function GoalHubApp() {
   // --- THEME STATE ---
   const [isDarkMode, setIsDarkMode] = useState(true);
   const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
-
-import React, { useState, useEffect, Suspense } from 'react';
-import {
-  monitorConnection,
-  subscribeToEvents,
-  subscribeToTurfs,
-  subscribeToExtras,
-  subscribeToSettings,
-  createTransaction,
-  pollPaymentStatus
-} from './firebase';
-import { INITIAL_EVENTS } from './data/constants';
-import bgImage from './assets/_ (51).jpeg';
-import { buildApiUrl, API_ENDPOINTS } from './config/api';
-
-// Context Providers
-import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-
-// Components
-import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
-import Loader from './components/ui/Loader';
-
-// Pages - Lazy Loading
-const LandingPage = React.lazy(() => import('./pages/LandingPage'));
-const EventsPage = React.lazy(() => import('./pages/EventsPage'));
-const BookingPage = React.lazy(() => import('./pages/BookingPage'));
-const CheckoutPage = React.lazy(() => import('./pages/CheckoutPage'));
-const LoginPage = React.lazy(() => import('./pages/LoginPage'));
-const SuccessPage = React.lazy(() => import('./pages/SuccessPage'));
-const ProcessingPage = React.lazy(() => import('./pages/ProcessingPage'));
-
-// Dashboard
-const Dashboard = React.lazy(() => import('./components/dashboard/Dashboard'));
-
-// Main App Component Logic
-function GoalHubContent() {
-  const { theme, isDarkMode } = useTheme();
-  const { userRole, userProfile, authLoading } = useAuth();
 
   // Navigation State
   const [currentView, setCurrentView] = useState('landing');
@@ -94,23 +80,10 @@ function GoalHubContent() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  // Events State
-  // Events State
-  const [eventsList, setEventsList] = useState([]);
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'events'), (snapshot) => {
-      setEventsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.warn("Firestore connection blocked (likely AdBlocker):", error);
-    });
-    return () => unsubscribe();
-  }, []);
-  const [editingEvent, setEditingEvent] = useState(null);
-
   // Data State
   // Bookings, Users, Notifications, Transactions moved to AdminDashboard
   const [eventsList, setEventsList] = useState([]);
+  const [editingEvent, setEditingEvent] = useState(null);
   const [turfsList, setTurfsList] = useState([]);
   const [extrasList, setExtrasList] = useState([]);
   const [settings, setSettings] = useState({});
@@ -132,10 +105,6 @@ function GoalHubContent() {
   const [pendingAdminNotifications, setPendingAdminNotifications] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Global Discount State
-  const [globalDiscount, setGlobalDiscount] = useState(0);
-
-  // Notifications
   // Notifications
   const [notification, setNotification] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -253,13 +222,6 @@ function GoalHubContent() {
   const handleDownloadPdf = (reportTitle) => {
     showNotification(`Downloading ${reportTitle}.pdf...`);
   };
-
-  const showNotification = React.useCallback((message) => {
-    // Simple Toast implementation
-    const notification = document.createElement('div');
-    notification.className = `fixed bottom-4 right-4 text-white px-6 py-3 rounded-xl shadow-2xl transform transition-all duration-500 translate-y-10 opacity-0 z-[100] font-bold flex items-center gap-3 backdrop-blur-md ${isDarkMode ? 'bg-emerald-600/90' : 'bg-emerald-600'}`;
-    notification.innerHTML = `<span>🔔</span> ${message}`;
-    document.body.appendChild(notification);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -885,28 +847,7 @@ function GoalHubContent() {
     }
   };
 
-      if (success) {
-        setConfirmedBooking({
-          id: `BK-${Math.floor(Math.random() * 10000)}`, // In reality, createBooking returns this
-          customer: finalCustomer.name,
-          turf: selectedTurf.name
-        });
-        // We should ideally call createBooking here too if not handled by backend webhook
-        navigateTo('success');
-      } else {
-        showNotification("Payment failed or timed out.");
-        navigateTo('checkout');
-      }
-    } catch (e) {
-      console.error(e);
-      showNotification("Payment Error: " + e.message);
-      navigateTo('checkout');
-    }
-  };
-
   // --- RENDER ---
-  if (isLoading) return <Loader />;
-
   if (isAuthLoading) {
     return (
       <div className={`min-h-screen font-sans ${theme.text} bg-black flex items-center justify-center`}>
@@ -1836,12 +1777,4 @@ function GoalHubContent() {
   );
 }
 
-export default function App() {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <GoalHubContent />
-      </AuthProvider>
-    </ThemeProvider>
-  );
-}
+export default GoalHubApp;
